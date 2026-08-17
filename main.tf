@@ -59,16 +59,6 @@ resource "proxmox_virtual_environment_vm" "truenas" {
     iothread     = true
   }
 
-  dynamic "hostpci" {
-    for_each = var.vm_pcie_devices
-    content {
-      device  = "hostpci${hostpci.key}"
-      id      = hostpci.value
-      pcie    = true
-      rom_bar = true
-    }
-  }
-
   cdrom {
     enabled   = true
     file_id   = proxmox_virtual_environment_download_file.truenas_iso.id

@@ -9,6 +9,5 @@ vm_name           = "truenas-scale"
 vm_cpu_cores      = 4
 vm_memory_mb      = 16384
 vm_boot_disk_size = 32
-vm_pcie_devices   = ["0000:03:00"] # find with: lspci | grep -i sata
 vm_network_bridge = "vmbr0"
 # vm_vlan_id      = 10

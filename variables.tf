@@ -62,11 +62,6 @@ variable "vm_boot_disk_size" {
   default     = 32
 }
 
-variable "vm_pcie_devices" {
-  description = "PCI addresses of storage controllers/HBAs to pass through (e.g. [\"0000:03:00\"])"
-  type        = list(string)
-  default     = []
-}
 
 variable "vm_network_bridge" {
   description = "Proxmox network bridge for the VM"
