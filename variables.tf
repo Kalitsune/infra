@@ -62,10 +62,10 @@ variable "vm_boot_disk_size" {
   default     = 32
 }
 
-variable "vm_data_disks" {
-  description = "Additional data disks for ZFS pools (sizes in GB)"
-  type        = list(number)
-  default     = [500, 500]
+variable "vm_pcie_devices" {
+  description = "PCI addresses of storage controllers/HBAs to pass through (e.g. [\"0000:03:00\"])"
+  type        = list(string)
+  default     = []
 }
 
 variable "vm_network_bridge" {

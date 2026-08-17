@@ -59,17 +59,13 @@ resource "proxmox_virtual_environment_vm" "truenas" {
     iothread     = true
   }
 
-  # Data disks for ZFS pools
-  dynamic "disk" {
-    for_each = var.vm_data_disks
+  dynamic "hostpci" {
+    for_each = var.vm_pcie_devices
     content {
-      interface    = "scsi${disk.key + 1}"
-      datastore_id = var.proxmox_storage
-      size         = disk.value
-      file_format  = "raw"
-      ssd          = true
-      discard      = "on"
-      iothread     = true
+      device  = "hostpci${hostpci.key}"
+      id      = hostpci.value
+      pcie    = true
+      rom_bar = true
     }
   }
 
