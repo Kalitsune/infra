@@ -14,7 +14,7 @@ provider "proxmox" {
   insecure  = true # set to false if your Proxmox has a trusted TLS cert
 }
 
-resource "proxmox_virtual_environment_download_file" "truenas_iso" {
+resource "proxmox_download_file" "truenas_iso" {
   node_name    = var.proxmox_node
   content_type = "iso"
   datastore_id = var.proxmox_iso_storage
@@ -23,7 +23,7 @@ resource "proxmox_virtual_environment_download_file" "truenas_iso" {
   url       = var.truenas_iso_url
 }
 
-resource "proxmox_virtual_environment_vm" "truenas" {
+resource "proxmox_vm" "truenas" {
   node_name = var.proxmox_node
   vm_id     = var.vm_id
   name      = var.vm_name
@@ -61,7 +61,7 @@ resource "proxmox_virtual_environment_vm" "truenas" {
 
   cdrom {
     enabled   = true
-    file_id   = proxmox_virtual_environment_download_file.truenas_iso.id
+    file_id   = proxmox_download_file.truenas_iso.id
     interface = "ide0"
   }
 
