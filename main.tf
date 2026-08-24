@@ -60,7 +60,6 @@ resource "proxmox_virtual_environment_vm" "truenas" {
   }
 
   cdrom {
-    enabled   = true
     file_id   = proxmox_download_file.truenas_iso.id
     interface = "ide0"
   }
