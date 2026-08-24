@@ -7,6 +7,9 @@ resource "proxmox_download_file" "haos_image" {
   url       = "https://github.com/home-assistant/operating-system/releases/download/18.2/haos_ova-18.2.qcow2.xz"
 }
 
+# After first apply, import the boot disk manually on the Proxmox host:
+#   qm importdisk 201 /var/lib/vz/template/iso/haos.img local-lvm --format raw
+# Then in the Proxmox GUI: Hardware → unused disk → Edit → set as scsi0, enable boot order.
 resource "proxmox_virtual_environment_vm" "homeassistant" {
   node_name = var.proxmox_node
   vm_id     = 201
@@ -33,19 +36,10 @@ resource "proxmox_virtual_environment_vm" "homeassistant" {
     pre_enrolled_keys = false
   }
 
-  disk {
-    interface    = "scsi0"
-    datastore_id = var.proxmox_storage
-    file_id      = proxmox_download_file.haos_image.id
-    size         = 32
-  }
-
   network_device {
     bridge = "vmbr0"
     model  = "virtio"
   }
-
-  boot_order = ["scsi0"]
 
   scsi_hardware = "virtio-scsi-single"
 
