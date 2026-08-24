@@ -23,7 +23,7 @@ resource "proxmox_download_file" "truenas_iso" {
   url       = var.truenas_iso_url
 }
 
-resource "proxmox_vm" "truenas" {
+resource "proxmox_virtual_environment_vm" "truenas" {
   node_name = var.proxmox_node
   vm_id     = var.vm_id
   name      = var.vm_name
