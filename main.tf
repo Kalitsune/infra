@@ -20,27 +20,27 @@ resource "proxmox_download_file" "truenas_iso" {
   datastore_id = var.proxmox_iso_storage
 
   file_name = "truenas-scale.iso"
-  url       = var.truenas_iso_url
+  url       = "https://download.sys.truenas.net/TrueNAS-SCALE-ElectricEel/24.10.2.2/TrueNAS-SCALE-24.10.2.2.iso"
 }
 
 resource "proxmox_virtual_environment_vm" "truenas" {
   node_name = var.proxmox_node
-  vm_id     = var.vm_id
-  name      = var.vm_name
+  vm_id     = 200
+  name      = "truenas-scale"
 
-  on_boot  = true
-  started  = false # start manually after post-install config
+  on_boot = true
+  started = false
 
   machine = "q35"
   bios    = "ovmf"
 
   cpu {
-    cores = var.vm_cpu_cores
+    cores = 2
     type  = "host"
   }
 
   memory {
-    dedicated = var.vm_memory_mb
+    dedicated = 16384
   }
 
   efi_disk {
@@ -48,11 +48,10 @@ resource "proxmox_virtual_environment_vm" "truenas" {
     type         = "4m"
   }
 
-  # Boot disk
   disk {
     interface    = "scsi0"
     datastore_id = var.proxmox_storage
-    size         = var.vm_boot_disk_size
+    size         = 32
     file_format  = "raw"
     ssd          = true
     discard      = "on"
@@ -65,9 +64,8 @@ resource "proxmox_virtual_environment_vm" "truenas" {
   }
 
   network_device {
-    bridge  = var.vm_network_bridge
-    model   = "virtio"
-    vlan_id = var.vm_vlan_id
+    bridge = "vmbr0"
+    model  = "virtio"
   }
 
   boot_order = ["scsi0", "ide0"]

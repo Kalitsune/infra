@@ -1,13 +1,5 @@
-proxmox_endpoint    = "https://192.168.1.161:8006"
+proxmox_endpoint    = "https://192.168.1.10:8006"
 proxmox_api_token   = "root@pam!opentofu=xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
 proxmox_node        = "pve"
 proxmox_storage     = "local-lvm"
 proxmox_iso_storage = "local"
-
-vm_id             = 200
-vm_name           = "truenas-scale"
-vm_cpu_cores      = 4
-vm_memory_mb      = 16384
-vm_boot_disk_size = 32
-vm_network_bridge = "vmbr0"
-# vm_vlan_id      = 10

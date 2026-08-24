@@ -15,62 +15,13 @@ variable "proxmox_node" {
 }
 
 variable "proxmox_storage" {
-  description = "Proxmox storage pool for VM disks and ISO"
+  description = "Proxmox storage pool for VM disks"
   type        = string
   default     = "local-lvm"
 }
 
 variable "proxmox_iso_storage" {
-  description = "Proxmox storage pool for ISO images (must support snippets/iso content)"
+  description = "Proxmox storage pool for ISO images (must support iso content)"
   type        = string
   default     = "local"
-}
-
-variable "truenas_iso_url" {
-  description = "Direct download URL for the TrueNAS Scale ISO"
-  type        = string
-  default     = "https://download.sys.truenas.net/TrueNAS-SCALE-ElectricEel/24.10.2.2/TrueNAS-SCALE-24.10.2.2.iso"
-}
-
-variable "vm_id" {
-  description = "Proxmox VM ID"
-  type        = number
-  default     = 200
-}
-
-variable "vm_name" {
-  description = "VM name"
-  type        = string
-  default     = "truenas-scale"
-}
-
-variable "vm_cpu_cores" {
-  description = "Number of CPU cores"
-  type        = number
-  default     = 4
-}
-
-variable "vm_memory_mb" {
-  description = "RAM in megabytes"
-  type        = number
-  default     = 16384
-}
-
-variable "vm_boot_disk_size" {
-  description = "Boot disk size in GB"
-  type        = number
-  default     = 32
-}
-
-
-variable "vm_network_bridge" {
-  description = "Proxmox network bridge for the VM"
-  type        = string
-  default     = "vmbr0"
-}
-
-variable "vm_vlan_id" {
-  description = "VLAN tag for the VM network interface (null = untagged)"
-  type        = number
-  default     = null
 }
