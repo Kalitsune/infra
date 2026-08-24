@@ -3,7 +3,7 @@ resource "proxmox_download_file" "haos_image" {
   content_type = "iso"
   datastore_id = var.proxmox_iso_storage
 
-  file_name = "haos.qcow2"
+  file_name = "haos.img"
   url       = "https://github.com/home-assistant/operating-system/releases/download/18.2/haos_ova-18.2.qcow2.xz"
 }
 
