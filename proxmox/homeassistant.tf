@@ -4,7 +4,7 @@ resource "proxmox_download_file" "haos_image" {
   datastore_id = var.proxmox_iso_storage
 
   file_name = "haos.qcow2"
-  url       = "https://github.com/home-assistant/operating-system/releases/download/14.2/haos_ova-14.2.qcow2.xz"
+  url       = "https://github.com/home-assistant/operating-system/releases/download/18.2/haos_ova-18.2.qcow2.xz"
 }
 
 resource "proxmox_virtual_environment_vm" "homeassistant" {
