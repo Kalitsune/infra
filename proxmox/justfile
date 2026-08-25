@@ -22,10 +22,10 @@ apply-truenas:
     tofu apply -target proxmox_download_file.truenas_iso -target proxmox_virtual_environment_vm.truenas
 
 apply-homeassistant:
-    tofu apply -target proxmox_download_file.haos_image -target proxmox_virtual_environment_vm.homeassistant
+    tofu apply -target proxmox_virtual_environment_vm.homeassistant -target terraform_data.haos_disk_import
 
 destroy-truenas:
     tofu destroy -target proxmox_virtual_environment_vm.truenas -target proxmox_download_file.truenas_iso
 
 destroy-homeassistant:
-    tofu destroy -target proxmox_virtual_environment_vm.homeassistant -target proxmox_download_file.haos_image
+    tofu destroy -target terraform_data.haos_disk_import -target proxmox_virtual_environment_vm.homeassistant
