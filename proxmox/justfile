@@ -29,3 +29,9 @@ destroy-truenas:
 
 destroy-homeassistant:
     tofu destroy -target terraform_data.haos_disk_import -target proxmox_virtual_environment_vm.homeassistant
+
+apply-talos:
+    tofu apply -target proxmox_download_file.talos_iso -target proxmox_virtual_environment_vm.talos_controlplane -target proxmox_virtual_environment_vm.talos_worker
+
+destroy-talos:
+    tofu destroy -target proxmox_virtual_environment_vm.talos_worker -target proxmox_virtual_environment_vm.talos_controlplane -target proxmox_download_file.talos_iso
