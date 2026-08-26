@@ -19,12 +19,12 @@ resource "proxmox_virtual_environment_vm" "truenas" {
   bios    = "ovmf"
 
   cpu {
-    cores = 2
+    cores = 4
     type  = "host"
   }
 
   memory {
-    dedicated = 16384
+    dedicated = 65536
   }
 
   efi_disk {

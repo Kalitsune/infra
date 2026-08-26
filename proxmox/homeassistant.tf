@@ -29,8 +29,6 @@ resource "proxmox_virtual_environment_vm" "homeassistant" {
     dedicated = 4096
   }
 
-  hook_script_file_id = "local:snippets/wait-truenas.sh"
-
   efi_disk {
     datastore_id      = "truenas-lvm"
     type              = "4m"
@@ -71,6 +69,7 @@ resource "terraform_data" "haos_disk_import" {
   provisioner "remote-exec" {
     inline = [
       "set -e",
+      "qm set ${local.haos_vm_id} --hookscript local:snippets/wait-truenas.sh",
       "if qm config ${local.haos_vm_id} | grep -q '^scsi0:'; then exit 0; fi",
       "mkdir -p /var/lib/vz/template/cache",
       "if [ ! -s '${local.haos_cache_file}' ] || ! xz -t '${local.haos_cache_file}' 2>/dev/null; then wget -q -O '${local.haos_cache_file}' '${local.haos_url}'; fi",

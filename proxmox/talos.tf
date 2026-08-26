@@ -13,8 +13,8 @@ resource "proxmox_download_file" "talos_iso" {
 
 resource "proxmox_virtual_environment_vm" "talos_controlplane" {
   node_name = var.proxmox_node
-  vm_id     = 210
-  name      = "talos-controlplane"
+  vm_id     = 300
+  name      = "talos-cp-1"
 
   on_boot = true
   started = false
@@ -31,11 +31,9 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
     dedicated = 4096
   }
 
-  hook_script_file_id = "local:snippets/wait-truenas.sh"
-
   disk {
     interface    = "scsi0"
-    datastore_id = "truenas-lvm"
+    datastore_id = "local-lvm"
     size         = 20
     file_format  = "raw"
     ssd          = true
@@ -63,8 +61,8 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
 
 resource "proxmox_virtual_environment_vm" "talos_worker" {
   node_name = var.proxmox_node
-  vm_id     = 211
-  name      = "talos-worker"
+  vm_id     = 301
+  name      = "talos-w1"
 
   on_boot = true
   started = false
@@ -80,8 +78,6 @@ resource "proxmox_virtual_environment_vm" "talos_worker" {
   memory {
     dedicated = 16384
   }
-
-  hook_script_file_id = "local:snippets/wait-truenas.sh"
 
   disk {
     interface    = "scsi0"
@@ -108,5 +104,26 @@ resource "proxmox_virtual_environment_vm" "talos_worker" {
 
   vga {
     type = "std"
+  }
+}
+
+resource "terraform_data" "talos_hookscripts" {
+  triggers_replace = {
+    cp_id     = proxmox_virtual_environment_vm.talos_controlplane.id
+    worker_id = proxmox_virtual_environment_vm.talos_worker.id
+  }
+
+  connection {
+    type  = "ssh"
+    host  = local.proxmox_host
+    user  = "root"
+    agent = true
+  }
+
+  provisioner "remote-exec" {
+    inline = [
+      "qm set 300 --hookscript local:snippets/wait-truenas.sh",
+      "qm set 301 --hookscript local:snippets/wait-truenas.sh",
+    ]
   }
 }
