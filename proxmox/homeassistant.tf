@@ -29,8 +29,10 @@ resource "proxmox_virtual_environment_vm" "homeassistant" {
     dedicated = 4096
   }
 
+  hook_script_file_id = "local:snippets/wait-truenas.sh"
+
   efi_disk {
-    datastore_id      = var.proxmox_storage
+    datastore_id      = "truenas-lvm"
     type              = "4m"
     pre_enrolled_keys = false
   }
@@ -74,7 +76,7 @@ resource "terraform_data" "haos_disk_import" {
       "if [ ! -s '${local.haos_cache_file}' ] || ! xz -t '${local.haos_cache_file}' 2>/dev/null; then wget -q -O '${local.haos_cache_file}' '${local.haos_url}'; fi",
       "IMG=$(mktemp /tmp/haos.XXXXXX.qcow2)",
       "xz -dc '${local.haos_cache_file}' > \"$IMG\"",
-      "qm importdisk ${local.haos_vm_id} \"$IMG\" ${var.proxmox_storage} --format raw",
+      "qm importdisk ${local.haos_vm_id} \"$IMG\" truenas-lvm --format raw",
       "rm -f \"$IMG\"",
       "DISK=$(qm config ${local.haos_vm_id} | grep '^unused0:' | awk '{print $2}')",
       "qm set ${local.haos_vm_id} --scsi0 \"$DISK,ssd=1,discard=on\"",

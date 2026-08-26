@@ -31,9 +31,11 @@ resource "proxmox_virtual_environment_vm" "talos_controlplane" {
     dedicated = 4096
   }
 
+  hook_script_file_id = "local:snippets/wait-truenas.sh"
+
   disk {
     interface    = "scsi0"
-    datastore_id = var.proxmox_storage
+    datastore_id = "truenas-lvm"
     size         = 20
     file_format  = "raw"
     ssd          = true
@@ -79,9 +81,11 @@ resource "proxmox_virtual_environment_vm" "talos_worker" {
     dedicated = 16384
   }
 
+  hook_script_file_id = "local:snippets/wait-truenas.sh"
+
   disk {
     interface    = "scsi0"
-    datastore_id = var.proxmox_storage
+    datastore_id = "truenas-lvm"
     size         = 100
     file_format  = "raw"
     ssd          = true
