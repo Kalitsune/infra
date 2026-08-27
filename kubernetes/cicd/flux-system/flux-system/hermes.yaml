@@ -12,5 +12,6 @@ spec:
     name: flux-system
   dependsOn:
     - name: tailscale
+    - name: democratic-csi-nfs
   wait: true
   timeout: 5m

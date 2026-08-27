@@ -25,6 +25,10 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
+    persistence:
+      storageClass: truenas-nfs
+      accessModes:
+        - ReadWriteMany
     service:
       enabled: true
       annotations:
