@@ -33,6 +33,3 @@ spec:
         - ReadWriteMany
     service:
       enabled: true
-      annotations:
-        tailscale.com/expose: "true"
-        tailscale.com/hostname: "hermes"
