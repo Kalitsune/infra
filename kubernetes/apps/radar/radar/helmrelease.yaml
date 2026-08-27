@@ -23,6 +23,7 @@ spec:
       retries: 3
   values:
     service:
+      type: LoadBalancer
+      loadBalancerClass: tailscale
       annotations:
-        tailscale.com/expose: "true"
         tailscale.com/hostname: "radar"
