@@ -21,9 +21,4 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
-  values:
-    service:
-      annotations:
-        tailscale.com/expose: "true"
-        tailscale.com/hostname: "radar"
-        tailscale.com/proxy-class: "userspace"
+  values: {}
