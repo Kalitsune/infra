@@ -61,7 +61,3 @@ spec:
           - noatime
           - nfsvers=4
 
-    volumeSnapshotClasses:
-      - name: truenas-nfs
-        deletionPolicy: Delete
-        parameters: {}
