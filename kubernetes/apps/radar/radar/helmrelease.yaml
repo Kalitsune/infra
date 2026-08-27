@@ -21,18 +21,8 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
-  postRenderers:
-    - kustomize:
-        patches:
-          - target:
-              kind: Service
-              name: radar
-            patch: |
-              - op: add
-                path: /spec/loadBalancerClass
-                value: tailscale
   values:
     service:
-      type: LoadBalancer
       annotations:
+        tailscale.com/expose: "true"
         tailscale.com/hostname: "radar"
