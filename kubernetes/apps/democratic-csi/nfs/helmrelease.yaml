@@ -38,6 +38,7 @@ spec:
           protocol: https
           host: 192.168.1.162
           port: 443
+          allowInsecure: true
         zfs:
           datasetParentName: mass/k8s/nfs/vols
           detachedSnapshotsDatasetParentName: mass/k8s/nfs/snaps
