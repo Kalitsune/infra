@@ -25,6 +25,8 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
+    controller:
+      type: statefulset
     persistence:
       storageClass: truenas-nfs
       accessModes:
