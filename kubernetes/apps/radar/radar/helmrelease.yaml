@@ -26,3 +26,4 @@ spec:
       annotations:
         tailscale.com/expose: "true"
         tailscale.com/hostname: "radar"
+        tailscale.com/proxy-class: "userspace"
