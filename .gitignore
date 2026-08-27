@@ -5,3 +5,5 @@ terraform.tfvars
 *.tfstate.backup
 *.tfplan
 .env
+talos/env.sh
+talos/talosconfig
