@@ -10,3 +10,4 @@ spec:
       envoyService:
         annotations:
           lbipam.cilium.io/ips: "192.168.1.200"
+        externalTrafficPolicy: Cluster
