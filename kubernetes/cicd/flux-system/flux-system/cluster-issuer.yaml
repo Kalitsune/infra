@@ -12,6 +12,5 @@ spec:
     name: flux-system
   dependsOn:
     - name: cert-manager
-    - name: gateway-config
   wait: true
   timeout: 5m
