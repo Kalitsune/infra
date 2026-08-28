@@ -7,6 +7,7 @@ spec:
   secretName: apps-tls
   dnsNames:
     - "*.kalitsune.net"
+    - "*.lab.kalitsune.net"
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
