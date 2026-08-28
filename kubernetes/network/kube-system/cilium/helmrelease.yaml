@@ -35,6 +35,12 @@ spec:
       enabled: true
     externalIPs:
       enabled: true
+    hubble:
+      enabled: true
+      relay:
+        enabled: true
+      ui:
+        enabled: true
     ipam:
       mode: kubernetes
     securityContext:
