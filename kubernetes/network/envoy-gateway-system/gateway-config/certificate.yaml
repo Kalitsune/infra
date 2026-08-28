@@ -6,7 +6,7 @@ metadata:
 spec:
   secretName: apps-tls
   dnsNames:
-    - "*.lab.kalitsune.net"
+    - "*.kalitsune.net"
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
