@@ -1,0 +1,12 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: apps-tls
+  namespace: envoy-gateway-system
+spec:
+  secretName: apps-tls
+  dnsNames:
+    - radar.lab.kalitsune.net
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
