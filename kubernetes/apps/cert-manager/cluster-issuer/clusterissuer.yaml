@@ -9,6 +9,11 @@ spec:
     privateKeySecretRef:
       name: letsencrypt-prod-account-key
     solvers:
+      - dns01:
+          cloudflare:
+            apiTokenSecretRef:
+              name: cloudflare-api-token
+              key: api-token
       - http01:
           gatewayHTTPRoute:
             parentRefs:
