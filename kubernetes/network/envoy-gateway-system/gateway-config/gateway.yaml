@@ -7,6 +7,11 @@ metadata:
     cert-manager.io/cluster-issuer: letsencrypt-prod
 spec:
   gatewayClassName: eg
+  infrastructure:
+    parametersRef:
+      group: gateway.envoyproxy.io
+      kind: EnvoyProxy
+      name: apps
   listeners:
     - name: http
       protocol: HTTP
