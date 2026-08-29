@@ -39,7 +39,7 @@ spec:
     persistence:
       data:
         enabled: true
-        storageClass: truenas-nfs
+        storageClass: local-path
         accessMode: ReadWriteOnce
         size: 10Gi
     config:
