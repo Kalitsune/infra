@@ -4,5 +4,13 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - secret.yaml
+  - smtp-secret.yaml
   - helmrelease.yaml
   - httproute.yaml
+patches:
+  - patch: |-
+      apiVersion: v1
+      kind: Secret
+      metadata:
+        name: smtp-credentials
+        namespace: pocket-id
