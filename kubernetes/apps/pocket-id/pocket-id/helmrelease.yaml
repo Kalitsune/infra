@@ -26,6 +26,10 @@ spec:
       name: pocket-id-secrets
       valuesKey: encryptionKey
       targetPath: encryptionKey
+    - kind: Secret
+      name: smtp-credentials
+      valuesKey: smtpPassword
+      targetPath: config.ui.settings.smtp.password
   values:
     host: id.kalitsune.net
     updateStrategy:
@@ -38,3 +42,18 @@ spec:
         storageClass: truenas-nfs
         accessMode: ReadWriteOnce
         size: 10Gi
+    config:
+      ui:
+        settings:
+          app:
+            appName: "FoxID!"
+          email:
+            oneTimeAccessAsAdminEnabled: true
+            apiKeyExpirationEnabled: true
+            verificationEnabled: true
+          smtp:
+            from: "FoxID! <auth@kalitsune.net>"
+            host: smtp.resend.com
+            user: resend
+            port: 465
+            tls: true
