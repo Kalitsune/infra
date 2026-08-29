@@ -1,4 +1,4 @@
 creation_rules:
   - path_regex: kubernetes/.*
     age: >-
-      REPLACE_WITH_AGE_PUBLIC_KEY
+      age1z6zvvtswe44922cg7xwzk5q2rtk5x3qrwg6w0pttl8l88q4ggaqswngurh
