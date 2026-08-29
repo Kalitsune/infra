@@ -19,9 +19,9 @@ it is state that a controller converges on. Act accordingly.
 proxmox/                              OpenTofu — VM definitions on the PVE host
 talos/                                Talos machine configs (controlplane/worker patches)
 kubernetes/                           Flux-managed cluster tree
-├── apps/<namespace>/<app>/           workloads
+├── apps/<namespace>/<app>/           workloads, plus that app's httproute.yaml
 ├── cicd/flux-system/flux-system/     Flux's own bootstrap + controllers
-└── network/<namespace>/<app>/        Gateways, HTTPRoutes, Cilium policies, Envoy config
+└── network/<namespace>/<app>/        Gateways, Cilium policies, Envoy config
 ```
 
 | Path            | Applied by                 | Agent may                    |
@@ -169,15 +169,27 @@ Checklist:
 - [ ] namespace exists or is created in the same commit
 - [ ] added to the parent `kustomization.yaml`
 - [ ] resource requests set; limits only where the workload actually needs them
-- [ ] any PVC sets `storageClassName: truenas-nfs` explicitly; one replica if the
-      app stores state in SQLite
-- [ ] if it needs to be reachable: an `HTTPRoute` under
-      `kubernetes/network/<ns>/<app>/`, not an Ingress — this cluster uses
-      Gateway API via Envoy Gateway
+- [ ] any PVC sets `storageClassName: truenas-nfs` explicitly; if the app stores
+      state in SQLite, `replicas: 1` **and** `strategy: { type: Recreate }`
+- [ ] if it needs to be reachable: an `HTTPRoute` in the app's own directory as
+      `httproute.yaml`, listed in that app's `kustomization.yaml` — not an
+      Ingress, and not under `network/`. This cluster uses Gateway API via
+      Envoy Gateway
 - [ ] hostname follows the convention below — `lab.kalitsune.net` unless public
       exposure was explicitly asked for
 
 ### Network changes
+
+Routes and plumbing live in different places:
+
+| Resource                                                 | Lives in                         |
+| -------------------------------------------------------- | -------------------------------- |
+| `HTTPRoute` for an app                                   | `apps/<ns>/<app>/httproute.yaml` |
+| `Gateway`, `GatewayClass`, Envoy config, Cilium policies | `network/<ns>/<app>/`            |
+
+An app's route ships with the app. Exposing a new service is a change inside
+`apps/`; it should not touch `network/` at all unless the Gateway itself needs a
+new listener.
 
 `kubernetes/network/` is the blast-radius directory. A bad `Gateway`, Cilium
 network policy or Envoy patch can lock out access to everything, including your
@@ -269,10 +281,21 @@ Persistent volumes use the **`truenas-nfs`** storage class.
 Two NFS-specific traps worth knowing before you file a bug against an app:
 
 - **SQLite on NFS.** Several apps here keep their state in an embedded database.
-  File locking over NFS is unreliable, so these must stay at **one replica**. NFS
-  gives you `ReadWriteMany`, which means nothing stops you from scaling such a
-  Deployment to 2 — and the result is a corrupted database, not a crash loop.
-  Never raise `replicas` on a stateful app just because the access mode allows it.
+  SQLite has no server process — concurrent writers coordinate through `fcntl()`
+  locks on the file, which are unreliable over NFS, and WAL mode cannot be shared
+  across processes on a network filesystem at all. Two writers do not produce an
+  error, they produce a corrupted database, often noticed long after the fact.
+  So, for any SQLite-backed app:
+  - Keep it at **one replica**. NFS gives you `ReadWriteMany`, so nothing stops
+    you from scaling the Deployment to 2 — the access mode is not permission.
+  - Set `strategy: { type: Recreate }`. This is the one people miss:
+    the default `RollingUpdate` has `maxSurge: 1`, so on every image bump the new
+    pod starts while the old one is still running, both mount the same PVC, and
+    both open the database. `replicas: 1` does not prevent that overlap;
+    `Recreate` does, at the cost of a few seconds of downtime during updates.
+  - These apps are singletons by design anyway — they run background schedulers
+    and cache DB state in memory, so a second instance corrupts state and
+    duplicates work even where the locking happens to hold.
 - **Permissions.** NFS does not honour `fsGroup` the way block storage does. If a
   container fails on a read-only or permission-denied write to its volume, that
   is usually an export/ownership question on the TrueNAS side, not a manifest bug.
@@ -324,6 +347,14 @@ kubectl -n <ns> describe httproute <name>   # check the Accepted/ResolvedRefs co
 cilium status
 ```
 
+The route lives in the app's namespace and the Gateway does not, so attachment
+is cross-namespace. That is governed by the Gateway listener's
+`allowedRoutes.namespaces` — if it does not select the app's namespace, the
+route is created, reconciled, reported `Ready` by Flux, and quietly never
+attached. The tell is `Accepted=False` with reason `NotAllowedByListeners` in
+the route's conditions, which is why `describe` on the route is not optional
+here.
+
 ### Layer 4 — the service actually serves
 
 This is the layer that matters. Everything above can be green while the service
@@ -348,14 +379,14 @@ Hit a path the app actually serves — a health endpoint if it has one, otherwis
 
 Reading the failure:
 
-| Symptom                                        | Where the problem is                                                                 |
-| ---------------------------------------------- | ------------------------------------------------------------------------------------ |
-| port-forward works, gateway does not           | route/Gateway, not the app                                                           |
-| `404` from Envoy                               | no HTTPRoute matched — hostname or path mismatch                                     |
-| `503`                                          | route matched, no healthy backend — check the Service selector and pod readiness     |
-| connection refused / timeout on the gateway IP | Gateway not programmed, or a Cilium policy dropping it                               |
-| TLS error                                      | certificate not issued yet — check the Certificate resource before blaming the route |
-| works on `--resolve`, fails on the public name | DNS or WAN, **not your change**                                                      |
+| Symptom                                        | Where the problem is                                                                       |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| port-forward works, gateway does not           | route/Gateway, not the app                                                                 |
+| `404` from Envoy                               | no HTTPRoute matched — hostname/path mismatch, or the route never attached to the listener |
+| `503`                                          | route matched, no healthy backend — check the Service selector and pod readiness           |
+| connection refused / timeout on the gateway IP | Gateway not programmed, or a Cilium policy dropping it                                     |
+| TLS error                                      | certificate not issued yet — check the Certificate resource before blaming the route       |
+| works on `--resolve`, fails on the public name | DNS or WAN, **not your change**                                                            |
 
 That last row matters here: the home connection drops to a 4G modem
 periodically and the public IP changes with it. If the `--resolve` form works and
@@ -400,7 +431,6 @@ Never commit a plaintext secret, token, kubeconfig, talosconfig, age key, or
 - One logical change per commit. Do not bundle a version bump with a refactor.
 - YAML: 2-space indent, no tabs, explicit `apiVersion`/`kind`, no trailing
   whitespace. Match the surrounding file over any general style rule.
-- Pin versions. No `:latest`, no floating chart versions.
 - Do not reformat or reorder files you did not otherwise need to change.
 
 ## When to stop and ask
