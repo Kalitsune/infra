@@ -7,7 +7,6 @@ spec:
   interval: 10m
   path: ./kubernetes/shared/smtp-token
   prune: true
-  targetNamespace: pocket-id
   sourceRef:
     kind: GitRepository
     name: flux-system
