@@ -27,7 +27,7 @@ spec:
       valuesKey: encryptionKey
       targetPath: encryptionKey
   values:
-    host: pocket-id.lab.kalitsune.net
+    host: id.kalitsune.net
     updateStrategy:
       type: RollingUpdate
       rollingUpdate:
