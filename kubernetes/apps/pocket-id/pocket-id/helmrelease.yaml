@@ -26,6 +26,10 @@ spec:
       name: pocket-id-secrets
       valuesKey: encryptionKey
       targetPath: encryptionKey
+    - kind: Secret
+      name: pocket-id-secrets
+      valuesKey: smtpPassword
+      targetPath: config.ui.settings.smtp.password
   values:
     host: id.kalitsune.net
     updateStrategy:
