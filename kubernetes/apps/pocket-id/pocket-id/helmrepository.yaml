@@ -1,0 +1,8 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: HelmRepository
+metadata:
+  name: anza-labs
+  namespace: flux-system
+spec:
+  url: https://anza-labs.github.io/charts
+  interval: 24h
