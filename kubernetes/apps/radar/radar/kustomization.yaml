@@ -4,5 +4,7 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - helmrelease.yaml
+  - oauth2-proxy.yaml
+  - oauth2-secret.yaml
   - httproute.yaml
   - rbac.yaml

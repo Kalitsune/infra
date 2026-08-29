@@ -11,5 +11,5 @@ spec:
     - radar.lab.kalitsune.net
   rules:
     - backendRefs:
-        - name: radar
-          port: 9280
+        - name: oauth2-proxy
+          port: 4180
