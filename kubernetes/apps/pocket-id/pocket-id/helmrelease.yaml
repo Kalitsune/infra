@@ -55,7 +55,7 @@ spec:
             verificationEnabled: true
           smtp:
             from: "FoxID! <auth@kalitsune.net>"
-            host: smtp.resend.com
-            user: resend
+            host: "smtp.resend.com"
+            user: "resend"
             port: 465
             tls: true
