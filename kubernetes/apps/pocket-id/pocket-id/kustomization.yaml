@@ -14,3 +14,6 @@ patches:
       metadata:
         name: smtp-credentials
         namespace: pocket-id
+    target:
+      kind: Secret
+      name: smtp-credentials
