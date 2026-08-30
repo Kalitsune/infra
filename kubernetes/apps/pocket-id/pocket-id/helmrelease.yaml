@@ -43,6 +43,8 @@ spec:
         accessMode: ReadWriteOnce
         size: 10Gi
     config:
+      core:
+        internalAppUrl: https://id.kalitsune.net
       ui:
         useDefaults: false
         settings:
