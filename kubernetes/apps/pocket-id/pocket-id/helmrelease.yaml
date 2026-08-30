@@ -57,7 +57,7 @@ spec:
             apiKeyExpirationEnabled: true
             verificationEnabled: true
           smtp:
-            from: "FoxID! <auth@kalitsune.net>"
+            from: '"FoxID!" <auth@kalitsune.net>'
             host: "smtp.resend.com"
             user: "resend"
             port: "465"
