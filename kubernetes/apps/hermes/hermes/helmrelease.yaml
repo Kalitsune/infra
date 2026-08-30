@@ -41,6 +41,8 @@ spec:
           secretKeyRef:
             name: oauth2-proxy-secret
             key: clientSecret
+      - name: HASS_URL
+        value: "http://192.168.1.164"
     extraContainers:
       - name: oauth2-proxy
         image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
