@@ -8,7 +8,6 @@ spec:
     group: gateway.networking.k8s.io
     kind: Gateway
     name: apps
-    namespace: envoy-gateway-system
   type: JSONPatch
   jsonPatches:
     # Inject a Lua HTTP filter at the front of the HTTPS listener's filter chain.
