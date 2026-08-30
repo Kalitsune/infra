@@ -32,7 +32,7 @@ spec:
           - --provider=oidc
           - --oidc-issuer-url=https://id.kalitsune.net
           - --redirect-url=https://hermes.kalitsune.net/oauth2/callback
-          - --upstream=http://localhost:9119
+          - --upstream=http://127.0.0.1:9119
           - --http-address=0.0.0.0:4180
           - --email-domain=*
           - --cookie-secure=true
