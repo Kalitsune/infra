@@ -51,6 +51,7 @@ spec:
           app:
             appName: "FoxID!"
             homePageUrl: "/settings/apps"
+            allowUserSignups: "withToken"
           email:
             oneTimeAccessAsAdminEnabled: true
             apiKeyExpirationEnabled: true
