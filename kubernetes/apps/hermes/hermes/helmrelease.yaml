@@ -25,6 +25,8 @@ spec:
     extraEnv:
       - name: HERMES_DASHBOARD
         value: "1"
+      - name: HERMES_DASHBOARD_HOST
+        value: "127.0.0.1"
     extraContainers:
       - name: oauth2-proxy
         image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
