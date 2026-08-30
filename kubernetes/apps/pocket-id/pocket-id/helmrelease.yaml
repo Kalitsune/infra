@@ -50,6 +50,7 @@ spec:
         settings:
           app:
             appName: "FoxID!"
+            homePageUrl: "/settings/apps"
           email:
             oneTimeAccessAsAdminEnabled: true
             apiKeyExpirationEnabled: true
@@ -59,4 +60,4 @@ spec:
             host: "smtp.resend.com"
             user: "resend"
             port: "465"
-            tls: "true"
+            tls: "TLS"
