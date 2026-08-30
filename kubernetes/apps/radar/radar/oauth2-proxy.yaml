@@ -23,7 +23,7 @@ spec:
             - --redirect-url=https://radar.lab.kalitsune.net/oauth2/callback
             - --upstream=http://radar:9280
             - --http-address=0.0.0.0:4180
-            - --email-domains=*
+            - --allowed-email-domain=*
             - --cookie-secure=true
             - --cookie-name=_oauth2_proxy_radar
             - --session-store-type=cookie
