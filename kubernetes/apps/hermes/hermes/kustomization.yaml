@@ -8,4 +8,4 @@ resources:
   - oauth2-secret.yaml
   - httproute.yaml
   - rbac.yaml
-  - hermes-auth-redirect.yaml
+  # - hermes-auth-redirect.yaml  # disabled: testing HTTPRoute fallback redirect
