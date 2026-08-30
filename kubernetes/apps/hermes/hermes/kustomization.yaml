@@ -8,3 +8,4 @@ resources:
   - oauth2-secret.yaml
   - httproute.yaml
   - rbac.yaml
+  - hermes-auth-redirect.yaml

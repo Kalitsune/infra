@@ -10,6 +10,48 @@ spec:
   hostnames:
     - hermes.kalitsune.net
   rules:
+    # Hermes shows a login-method selection screen when /auth/login is visited
+    # without a provider parameter. Adding ?provider=self-hosted skips that screen
+    # and goes directly to the self-hosted OIDC flow (id.kalitsune.net).
+    #
+    # The primary redirect with full query-param preservation is handled by
+    # the EnvoyPatchPolicy Lua filter in:
+    #   kubernetes/apps/hermes/hermes/hermes-auth-redirect.yaml
+    #
+    # The two rules below act as a fallback: if the Lua filter is not applied,
+    # rule 2 redirects /auth/login to include the provider param (the next=
+    # query param is dropped in that path, but the login still succeeds).
+    # Rule 1 ensures requests that already carry provider=self-hosted pass
+    # straight through, preventing a redirect loop in either case.
+
+    # Rule 1 – pass through when provider is already set (prevents redirect loop)
+    - matches:
+        - path:
+            type: Exact
+            value: /auth/login
+          queryParams:
+            - name: provider
+              type: Exact
+              value: self-hosted
+      backendRefs:
+        - name: hermes-hermes-agent
+          port: 4180
+
+    # Rule 2 – fallback redirect to inject provider=self-hosted
+    # (used only when the Lua filter in hermes-auth-redirect.yaml is not active)
+    - matches:
+        - path:
+            type: Exact
+            value: /auth/login
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            statusCode: 302
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /auth/login?provider=self-hosted
+
+    # Rule 3 – all other traffic
     - backendRefs:
         - name: hermes-hermes-agent
           port: 4180

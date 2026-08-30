@@ -1,0 +1,51 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: EnvoyPatchPolicy
+metadata:
+  name: hermes-auth-login-provider-redirect
+  namespace: envoy-gateway-system
+spec:
+  targetRef:
+    group: gateway.networking.k8s.io
+    kind: Gateway
+    name: apps
+    namespace: envoy-gateway-system
+  type: JSONPatch
+  jsonPatches:
+    # Inject a Lua HTTP filter at the front of the HTTPS listener's filter chain.
+    # The filter intercepts /auth/login on hermes.kalitsune.net and prepends
+    # provider=self-hosted to the query string so Hermes skips the login-method
+    # selection screen and goes directly to the self-hosted OIDC flow.
+    # Existing query params (e.g. next=) are preserved.
+    #
+    # The HTTPRoute for hermes has a companion rule that passes requests
+    # already carrying provider=self-hosted straight through to the backend,
+    # preventing any redirect loop should the Lua filter be disabled or
+    # temporarily not applied.
+    - type: "type.googleapis.com/envoy.config.listener.v3.Listener"
+      name: "envoy-gateway-system/apps/https"
+      operation:
+        op: add
+        path: "/filter_chains/0/filters/0/typed_config/http_filters/0"
+        value:
+          name: "envoy.filters.http.lua"
+          typed_config:
+            "@type": "type.googleapis.com/envoy.extensions.filters.http.lua.v3.Lua"
+            default_source_code:
+              inline_string: |
+                function envoy_on_request(request_handle)
+                  local authority = request_handle:headers():get(":authority") or ""
+                  local path = request_handle:headers():get(":path") or ""
+                  if authority ~= "hermes.kalitsune.net" then return end
+                  if not path:match("^/auth/login") then return end
+                  if path:match("[?&]provider=") then return end
+                  local new_path
+                  if path:match("%?") then
+                    new_path = path:gsub("%?", "?provider=self-hosted&", 1)
+                  else
+                    new_path = path .. "?provider=self-hosted"
+                  end
+                  request_handle:respond(
+                    {[":status"] = "302", ["location"] = new_path},
+                    ""
+                  )
+                end
