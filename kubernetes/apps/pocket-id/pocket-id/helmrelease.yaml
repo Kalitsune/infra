@@ -44,7 +44,7 @@ spec:
         size: 10Gi
     config:
       core:
-        internalAppUrl: http://pocket-id.pocket-id.svc.cluster.local
+        internalAppUrl: https://id.kalitsune.net
       ui:
         useDefaults: false
         settings:
