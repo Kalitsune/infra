@@ -27,6 +27,20 @@ spec:
         value: "1"
       - name: HERMES_DASHBOARD_HOST
         value: "127.0.0.1"
+      - name: HERMES_DASHBOARD_PUBLIC_URL
+        value: "https://hermes.kalitsune.net"
+      - name: HERMES_DASHBOARD_OIDC_ISSUER
+        value: "https://id.kalitsune.net"
+      - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
+        valueFrom:
+          secretKeyRef:
+            name: oauth2-proxy-secret
+            key: clientId
+      - name: HERMES_DASHBOARD_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: oauth2-proxy-secret
+            key: clientSecret
     extraContainers:
       - name: oauth2-proxy
         image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
