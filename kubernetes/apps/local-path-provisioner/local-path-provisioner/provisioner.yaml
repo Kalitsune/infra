@@ -11,8 +11,11 @@ metadata:
   name: local-path-provisioner-role
 rules:
   - apiGroups: [""]
-    resources: ["nodes", "persistentvolumeclaims", "configmaps", "pods", "pods/log"]
+    resources: ["nodes", "persistentvolumeclaims", "configmaps", "pods/log"]
     verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
   - apiGroups: [""]
     resources: ["persistentvolumes"]
     verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
