@@ -11,5 +11,5 @@ spec:
     - hermes.kalitsune.net
   rules:
     - backendRefs:
-        - name: oauth2-proxy
+        - name: hermes-hermes-agent
           port: 4180

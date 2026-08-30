@@ -22,6 +22,55 @@ spec:
       strategy: rollback
       retries: 3
   values:
+    extraEnv:
+      - name: HERMES_DASHBOARD
+        value: "1"
+    extraContainers:
+      - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+        args:
+          - --provider=oidc
+          - --oidc-issuer-url=https://id.kalitsune.net
+          - --redirect-url=https://hermes.kalitsune.net/oauth2/callback
+          - --upstream=http://localhost:9119
+          - --http-address=0.0.0.0:4180
+          - --email-domain=*
+          - --cookie-secure=true
+          - --cookie-name=_oauth2_proxy_hermes
+          - --session-store-type=cookie
+          - --banner="-"
+          - --skip-provider-button=true
+          - --code-challenge-method=S256
+        env:
+          - name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: clientId
+          - name: OAUTH2_PROXY_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: clientSecret
+          - name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: cookieSecret
+        ports:
+          - name: http
+            containerPort: 4180
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        securityContext: {}
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
@@ -33,3 +82,7 @@ spec:
         - ReadWriteMany
     service:
       enabled: true
+      ports:
+        - name: oauth2-proxy
+          port: 4180
+          targetPort: 4180
