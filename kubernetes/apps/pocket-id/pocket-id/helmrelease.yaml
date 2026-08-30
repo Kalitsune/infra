@@ -61,4 +61,4 @@ spec:
             host: "smtp.resend.com"
             user: "resend"
             port: "465"
-            tls: "TLS"
+            tls: "tls"
