@@ -1,4 +1,5 @@
 model:
+  provider: anthropic
   default: claude-opus-5
 
 agent:
