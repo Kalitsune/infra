@@ -25,19 +25,20 @@ spec:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
             - --redirect-url=https://honcho.lab.kalitsune.net/oauth2/callback
-            # Multiple upstreams, routed by path with longest-match winning.
-            # Default: the OpenConcho UI, so / is a usable dashboard instead
-            # of Honcho's bare {"detail":"Not Found"}.
+            # Single upstream: the OpenConcho UI. Honcho's own HTTP surface is
+            # deliberately NOT mapped here.
+            #
+            # The SPA issues every Honcho call same-origin to /api/ and names
+            # the real backend in an X-Honcho-Upstream header, which nginx
+            # forwards server-side (see packages/web/src/lib/dispatch.ts). So
+            # /api/ already reaches the API through the UI pod — and it is
+            # constrained by that pod's upstream allowlist. Mapping /v3/ and
+            # /docs here as well would add a second, unconstrained route to
+            # the same API for no gain.
+            #
+            # Direct API access is still available two ways: through /api/
+            # with the upstream header, or a port-forward to svc/honcho.
             - --upstream=http://openconcho:80
-            # Honcho's own surfaces stay reachable on the same hostname:
-            # /docs and /redoc for the API explorer, /v3/ for direct API
-            # calls, /health for probing. Without these the raw API would
-            # become unreachable the moment the UI took over /.
-            - --upstream=http://honcho:8000/docs
-            - --upstream=http://honcho:8000/redoc
-            - --upstream=http://honcho:8000/openapi.json
-            - --upstream=http://honcho:8000/health
-            - --upstream=http://honcho:8000/v3/
             - --http-address=0.0.0.0:4180
             - --email-domain=*
             - --cookie-secure=true

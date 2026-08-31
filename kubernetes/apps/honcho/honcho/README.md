@@ -46,15 +46,21 @@ Two consequences that are easy to get wrong:
 
 ### Paths on `honcho.lab.kalitsune.net`
 
-oauth2-proxy routes by longest-matching path, so both the UI and the raw API
-live on one hostname:
+oauth2-proxy has a single upstream — the UI. Honcho's own HTTP surface
+(`/docs`, `/v3/…`) is deliberately **not** mapped onto this hostname.
 
-| Path                                    | Goes to    |
-| --------------------------------------- | ---------- |
-| `/`                                     | OpenConcho |
-| `/docs`, `/redoc`, `/openapi.json`      | Honcho     |
-| `/v3/…`                                 | Honcho     |
-| `/health`                               | Honcho     |
+The SPA issues every Honcho call same-origin to `/api/`, naming the backend in
+an `X-Honcho-Upstream` header that nginx forwards server-side. So the API is
+already reachable through the UI pod, constrained by that pod's allowlist.
+Publishing `/v3/` alongside it would be a second, unconstrained route to the
+same API for no gain.
+
+For raw API work — including Swagger — use a port-forward:
+
+```bash
+kubectl -n honcho port-forward svc/honcho 8000:8000
+# http://localhost:8000/docs
+```
 
 ### The UI's token
 
