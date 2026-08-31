@@ -4,6 +4,7 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - secret.yaml
+  - profiles/infra-expert/secret.yaml
   - helmrelease.yaml
   - oauth2-secret.yaml
   - httproute.yaml

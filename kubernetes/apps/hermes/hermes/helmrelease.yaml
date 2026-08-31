@@ -35,6 +35,9 @@ spec:
       - name: hermes-profiles
         configMap:
           name: hermes-profiles
+      - name: infra-expert-secrets
+        secret:
+          secretName: hermes-infra-expert-secrets
 
     extraInitContainers:
       - name: seed-profiles
@@ -73,11 +76,30 @@ spec:
 
               echo "seeded profile: $profile"
             done
+
+            # Seed per-profile .env from mounted secret volumes
+            for profile in $profiles; do
+              secrets_dir="/hermes-profile-secrets/$profile"
+              [ -d "$secrets_dir" ] || continue
+              dest=/opt/data/profiles/$profile
+              mkdir -p "$dest"
+              env_file="$dest/.env"
+              : > "$env_file"
+              for f in "$secrets_dir"/*; do
+                [ -f "$f" ] || continue
+                key="${f##*/}"
+                printf '%s=%s\n' "$key" "$(cat "$f")" >> "$env_file"
+              done
+              echo "seeded .env for profile: $profile"
+            done
         volumeMounts:
           - name: data
             mountPath: /opt/data
           - name: hermes-profiles
             mountPath: /hermes-profiles
+            readOnly: true
+          - name: infra-expert-secrets
+            mountPath: /hermes-profile-secrets/infra-expert
             readOnly: true
 
     extraEnv:
