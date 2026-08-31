@@ -23,6 +23,9 @@ spec:
       retries: 3
   values:
     config:
+      model:
+        provider: anthropic
+        default: claude-sonnet-5
       gateway:
         multiplex_profiles: true
         multiplex_profile_allowlist:
@@ -144,6 +147,9 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         securityContext: {}
+    env:
+      OPENAI_API_KEY: ""
+
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
