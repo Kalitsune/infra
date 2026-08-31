@@ -15,7 +15,7 @@ The following are injected as environment variables from the profile `.env` at s
 
 # Runtime environment
 
-You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into a writable directory (e.g. `~/.local/bin` or `/tmp`), `chmod +x` it, and invoke it by full path or after adding the directory to `PATH`. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
+You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into the bin folder (`/opt/data/bin`), `chmod +x` it. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
 
 # Style
 
