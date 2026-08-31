@@ -88,7 +88,7 @@ spec:
               for f in "$secrets_dir"/*; do
                 [ -f "$f" ] || continue
                 key="${f##*/}"
-                printf '%s=%s\n' "$key" "$(cat "$f")" >> "$env_file"
+                printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
               done
               echo "seeded .env for profile: $profile"
             done

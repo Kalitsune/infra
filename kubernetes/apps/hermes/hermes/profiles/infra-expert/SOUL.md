@@ -7,15 +7,26 @@ Read `AGENT.md` at the repository root before acting. It is the authoritative op
 
 # Session secrets
 
-The following are injected as environment variables from the profile `.env` at session start:
+All secrets are injected as **base64-encoded** environment variables from the profile `.env`. Always decode before use: `echo "$VAR" | base64 -d`.
 
-- `GIT_SSH_KEY` — ed25519 deploy key for the infra repo. Write it to a temp file (`chmod 600`) and pass it via `GIT_SSH_COMMAND` or `ssh -i` when cloning/pushing.
-- `KUBECONFIG` — kubectl config granting cluster access. Write it to a temp file and export `KUBECONFIG` pointing to it before running any `kubectl` or `flux` commands.
-- `INFRA_REPO` — full URL of the infra git repository.
+- `GIT_SSH_KEY` — base64-encoded ed25519 deploy key for the infra repo.
+  ```sh
+  echo "$GIT_SSH_KEY" | base64 -d > /tmp/id_infra && chmod 600 /tmp/id_infra
+  export GIT_SSH_COMMAND="ssh -i /tmp/id_infra -o StrictHostKeyChecking=no"
+  ```
+- `KUBECONFIG` — base64-encoded kubectl config granting cluster access.
+  ```sh
+  echo "$KUBECONFIG" | base64 -d > /tmp/kubeconfig
+  export KUBECONFIG=/tmp/kubeconfig
+  ```
+- `INFRA_REPO` — base64-encoded URL of the infra git repository.
+  ```sh
+  REPO=$(echo "$INFRA_REPO" | base64 -d)
+  ```
 
 # Runtime environment
 
-You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into the bin folder (`/opt/data/bin`), `chmod +x` it. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
+You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into the bin folder (`~/.local/bin`), `chmod +x` it. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
 
 # Style
 
