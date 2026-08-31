@@ -25,7 +25,19 @@ spec:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
             - --redirect-url=https://honcho.lab.kalitsune.net/oauth2/callback
-            - --upstream=http://honcho:8000
+            # Multiple upstreams, routed by path with longest-match winning.
+            # Default: the OpenConcho UI, so / is a usable dashboard instead
+            # of Honcho's bare {"detail":"Not Found"}.
+            - --upstream=http://openconcho:80
+            # Honcho's own surfaces stay reachable on the same hostname:
+            # /docs and /redoc for the API explorer, /v3/ for direct API
+            # calls, /health for probing. Without these the raw API would
+            # become unreachable the moment the UI took over /.
+            - --upstream=http://honcho:8000/docs
+            - --upstream=http://honcho:8000/redoc
+            - --upstream=http://honcho:8000/openapi.json
+            - --upstream=http://honcho:8000/health
+            - --upstream=http://honcho:8000/v3/
             - --http-address=0.0.0.0:4180
             - --email-domain=*
             - --cookie-secure=true

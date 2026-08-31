@@ -8,5 +8,6 @@ resources:
   - postgres.yaml
   - redis.yaml
   - deployment.yaml
+  - openconcho.yaml
   - oauth2-proxy.yaml
   - httproute.yaml

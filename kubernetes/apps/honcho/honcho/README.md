@@ -16,10 +16,61 @@ cluster's agents have would otherwise be sent to a third party.
 | `honcho-deriver`  | Background worker — builds representations, summaries, dreams     |
 | `honcho-postgres` | Postgres 17 + pgvector; the only durable state                    |
 | `honcho-redis`    | Cache and lock coordination; disposable, no PVC                   |
+| `openconcho`      | Third-party web UI for browsing memory                            |
 | `oauth2-proxy`    | OIDC gate in front of the browser route only                      |
 
 The deriver is not optional. Without it messages are stored but no memory is
 ever derived, which looks like "Honcho is up but knows nothing".
+
+## The web UI
+
+Honcho upstream ships **no dashboard** — the API is the product, and the only
+bundled browser surface is FastAPI's `/docs`. The dashboard in Plastic Labs'
+marketing is their hosted SaaS, not part of the AGPL server.
+
+[`offendingcommit/openconcho`](https://github.com/offendingcommit/openconcho)
+(MIT) fills that gap: browse peers, sessions, conclusions and chat with memory
+context. It is a static React SPA served by nginx, which proxies `/api/`
+**server-side** to whatever host the browser names in an `X-Honcho-Upstream`
+header — so the Honcho API is never exposed to the browser and there is no CORS.
+
+Two consequences that are easy to get wrong:
+
+- `OPENCONCHO_DEFAULT_HONCHO_URL` must be the **in-cluster** address. Set it to
+  the public hostname and nginx would proxy back through oauth2-proxy, holding
+  no OIDC cookie, and get a login redirect instead of an API response.
+- `OPENCONCHO_UPSTREAM_ALLOWLIST` **must** be set. Upstream leaves it open
+  because it assumes a localhost-only bind; exposed as we do, an unpinned proxy
+  would forward to any host a request names — an SSRF relay onto the cluster
+  network.
+
+### Paths on `honcho.lab.kalitsune.net`
+
+oauth2-proxy routes by longest-matching path, so both the UI and the raw API
+live on one hostname:
+
+| Path                                    | Goes to    |
+| --------------------------------------- | ---------- |
+| `/`                                     | OpenConcho |
+| `/docs`, `/redoc`, `/openapi.json`      | Honcho     |
+| `/v3/…`                                 | Honcho     |
+| `/health`                               | Honcho     |
+
+### The UI's token
+
+The UI asks for the Honcho URL and token **in the browser** and keeps them in
+`localStorage` — nothing is baked into this deployment. Do not paste the admin
+JWT from `honcho-client-secrets`: that is Hermes' credential and it can
+administer the server.
+
+Mint a workspace-scoped token instead. It covers every view except the
+multi-workspace "fleet" page (`/v3/workspaces/list` is admin-only), which is
+irrelevant with a single workspace — navigate straight to `/workspaces/hermes`.
+
+```bash
+# from a checkout of github.com/plastic-labs/honcho, with AUTH_JWT_SECRET set
+uv run python scripts/generate_jwt.py --workspace hermes --expires 90d
+```
 
 ## Two access paths, deliberately different
 

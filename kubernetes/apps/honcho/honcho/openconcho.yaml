@@ -1,0 +1,103 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: openconcho
+  namespace: honcho
+spec:
+  selector:
+    app.kubernetes.io/name: openconcho
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: openconcho
+  namespace: honcho
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: openconcho
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: openconcho
+    spec:
+      # nginx-unprivileged base: runs as 101 and cannot write outside the
+      # tmpfs mounts below.
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 101
+        runAsGroup: 101
+        fsGroup: 101
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: openconcho
+          image: ghcr.io/offendingcommit/openconcho-web:0.16.2
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+          env:
+            # Seeds the UI's first instance. This MUST be the in-cluster
+            # address, not https://honcho.lab.kalitsune.net — the SPA sends
+            # this back as the X-Honcho-Upstream header and nginx proxies to
+            # it server-side. Pointing at the public hostname would send the
+            # request back through oauth2-proxy, where nginx (holding no OIDC
+            # cookie) would get a 302 to Pocket ID instead of an API response.
+            - name: OPENCONCHO_DEFAULT_HONCHO_URL
+              value: "http://honcho.honcho.svc.cluster.local:8000"
+            # SSRF guard. Without this the /api/ proxy forwards to ANY host a
+            # request names, turning this pod into an open relay onto the
+            # cluster network. Upstream defaults it to open because upstream
+            # assumes a localhost-only bind; we are exposing it, so it must
+            # be pinned.
+            - name: OPENCONCHO_UPSTREAM_ALLOWLIST
+              value: "honcho.honcho.svc.cluster.local"
+          ports:
+            - name: http
+              containerPort: 8080
+          # Container-local health endpoint, distinct from Honcho's /health.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            # nginx needs these writable; the root filesystem is read-only.
+            # /tmp also holds the entrypoint-rendered config.js.
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: nginx-conf
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: tmp
+          emptyDir: {}
