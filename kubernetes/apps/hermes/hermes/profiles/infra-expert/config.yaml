@@ -1,6 +1,9 @@
 model:
   default: claude-opus-5
 
+agent:
+  reasoning_effort: max
+
 toolsets:
   - terminal
   - file
