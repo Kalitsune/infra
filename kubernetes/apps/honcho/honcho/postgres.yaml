@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: honcho-postgres
+  namespace: honcho
+spec:
+  clusterIP: None
+  selector:
+    app.kubernetes.io/name: honcho-postgres
+  ports:
+    - name: postgres
+      port: 5432
+      targetPort: postgres
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: honcho-postgres
+  namespace: honcho
+spec:
+  serviceName: honcho-postgres
+  # Single writer. Postgres does not support two processes on one data
+  # directory; scaling this beyond 1 corrupts the cluster.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: honcho-postgres
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: honcho-postgres
+    spec:
+      containers:
+        - name: postgres
+          image: pgvector/pgvector:pg17
+          args:
+            - postgres
+            - -c
+            - max_connections=200
+          env:
+            - name: POSTGRES_DB
+              value: honcho
+            - name: POSTGRES_USER
+              value: honcho
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: honcho-secrets
+                  key: POSTGRES_PASSWORD
+            # Keep the cluster in a subdirectory: local-path hands over the
+            # volume root, and initdb refuses a non-empty directory if
+            # anything (lost+found, ownership markers) is already there.
+            #
+            # No securityContext/fsGroup is needed. The image entrypoint runs
+            # as root, chowns PGDATA and re-execs postgres as the postgres
+            # user itself; local-path also creates the volume dir 0777.
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgres
+              containerPort: 5432
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U honcho -d honcho -h 127.0.0.1
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - pg_isready -U honcho -d honcho -h 127.0.0.1
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        # Deliberately NOT truenas-nfs: Postgres needs POSIX fsync and file
+        # locking semantics that NFS does not reliably provide. See the
+        # storage section of AGENT.md.
+        storageClassName: local-path
+        resources:
+          requests:
+            storage: 10Gi

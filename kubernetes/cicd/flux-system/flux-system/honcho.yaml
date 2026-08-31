@@ -1,0 +1,25 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: honcho
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./kubernetes/apps/honcho/honcho
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    # Postgres uses local-path, not the NFS class, so this does not depend on
+    # democratic-csi-nfs the way hermes does.
+    - name: local-path-provisioner
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  # Longer than the 5m the other apps use: the first reconcile pulls the
+  # Postgres and Honcho images and then runs the full alembic migration chain
+  # against an empty database before the API reports ready.
+  timeout: 10m

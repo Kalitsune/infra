@@ -1,0 +1,72 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: honcho-config
+  namespace: honcho
+data:
+  LOG_LEVEL: "INFO"
+
+  # ---------------------------------------------------------------------
+  # Cache
+  # ---------------------------------------------------------------------
+  # ?suppress=true keeps a Redis outage from taking the API down with it —
+  # cache errors degrade to a miss instead of raising.
+  CACHE_ENABLED: "true"
+  CACHE_URL: "redis://honcho-redis:6379/0?suppress=true"
+
+  # ---------------------------------------------------------------------
+  # Auth
+  # ---------------------------------------------------------------------
+  # Scoped HS256 JWTs (src/security.py). This is the API's own machine auth
+  # and is what Hermes authenticates with — deliberately NOT oauth2-proxy,
+  # which only gates the browser route in front of this service.
+  AUTH_USE_AUTH: "true"
+
+  # ---------------------------------------------------------------------
+  # Models — Gemini transport throughout, reusing the existing Google key.
+  # ---------------------------------------------------------------------
+  # Every text feature must support tool calling; the Flash models do.
+  # thinking_budget_tokens is deliberately left unset: Gemini 3.x models use
+  # thinking levels rather than a token budget.
+  DERIVER_MODEL_CONFIG__TRANSPORT: "gemini"
+  DERIVER_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+
+  SUMMARY_MODEL_CONFIG__TRANSPORT: "gemini"
+  SUMMARY_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+
+  DREAM_DEDUCTION_MODEL_CONFIG__TRANSPORT: "gemini"
+  DREAM_DEDUCTION_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  DREAM_INDUCTION_MODEL_CONFIG__TRANSPORT: "gemini"
+  DREAM_INDUCTION_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+
+  # Dialectic levels have no shared default — each level carries its own
+  # model config, and startup fails with "Missing configuration for reasoning
+  # levels" if any of the five is left on a different transport by accident.
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT: "gemini"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__TRANSPORT: "gemini"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__TRANSPORT: "gemini"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__TRANSPORT: "gemini"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__TRANSPORT: "gemini"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL: "gemini-3.7-flash"
+
+  # ---------------------------------------------------------------------
+  # Embeddings
+  # ---------------------------------------------------------------------
+  # gemini-embedding-2 rather than -001: Honcho does not normalise embedding
+  # vectors itself, and -001 requires manual normalisation at any dimension
+  # other than 3072. gemini-embedding-2 auto-normalises truncated dimensions.
+  #
+  # 1536 must match the pgvector column width. It is the value the initial
+  # migration builds the schema with, and the startup validator crashes the
+  # process if config and physical schema disagree — so changing this after
+  # first deploy means re-embedding, not just an edit here.
+  EMBEDDING_MODEL_CONFIG__TRANSPORT: "gemini"
+  EMBEDDING_MODEL_CONFIG__MODEL: "gemini-embedding-2"
+  EMBEDDING_VECTOR_DIMENSIONS: "1536"
+  EMBED_MESSAGES: "true"
+
+  VECTOR_STORE_TYPE: "pgvector"

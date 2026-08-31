@@ -1,0 +1,56 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: honcho-redis
+  namespace: honcho
+spec:
+  selector:
+    app.kubernetes.io/name: honcho-redis
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-redis
+  namespace: honcho
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: honcho-redis
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: honcho-redis
+    spec:
+      containers:
+        - name: redis
+          image: redis:8.2-alpine
+          # Cache and lock coordination only — every durable fact lives in
+          # Postgres. Running without persistence keeps this pod disposable
+          # (no PVC), at the cost of a cold cache after a restart.
+          args:
+            - redis-server
+            - --save
+            - ""
+            - --appendonly
+            - "no"
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 256Mi

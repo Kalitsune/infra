@@ -1,0 +1,110 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: honcho
+  namespace: honcho
+spec:
+  selector:
+    app.kubernetes.io/name: honcho-api
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-api
+  namespace: honcho
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: honcho-api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: honcho-api
+    spec:
+      containers:
+        - name: api
+          image: ghcr.io/plastic-labs/honcho:v3.1.0
+          # The image's default CMD starts the API without running migrations.
+          # docker/entrypoint.sh runs provision_db.py (CREATE EXTENSION vector
+          # + alembic upgrade head) first, which is what a fresh database
+          # needs. The deriver deliberately does NOT run this — two processes
+          # running alembic concurrently race on the migration table.
+          command:
+            - sh
+            - /app/docker/entrypoint.sh
+          envFrom:
+            - configMapRef:
+                name: honcho-config
+            - secretRef:
+                name: honcho-secrets
+          ports:
+            - name: http
+              containerPort: 8000
+          startupProbe:
+            httpGet:
+              path: /health
+              port: http
+            # Migrations run before the server binds. Allow up to 5 minutes on
+            # a first deploy so a slow alembic run is not killed mid-migration.
+            periodSeconds: 10
+            failureThreshold: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 30
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honcho-deriver
+  namespace: honcho
+spec:
+  # Background worker that turns messages into observations and peer
+  # representations. Without it messages are stored but no memory is ever
+  # built. Workers coordinate through the Postgres queue, so this can be
+  # scaled out later if the backlog grows.
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: honcho-deriver
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: honcho-deriver
+    spec:
+      containers:
+        - name: deriver
+          image: ghcr.io/plastic-labs/honcho:v3.1.0
+          command:
+            - python
+            - -m
+            - src.deriver
+          envFrom:
+            - configMapRef:
+                name: honcho-config
+            - secretRef:
+                name: honcho-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 2Gi

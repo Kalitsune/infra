@@ -38,8 +38,51 @@ spec:
       - name: infra-expert-secrets
         secret:
           secretName: hermes-infra-expert-secrets
+      # Managed scope: an IT-pinned config layer that Hermes merges over
+      # EVERY profile's config.yaml, including profiles created at runtime
+      # that this repo has never seen. Used to turn on the Honcho memory
+      # provider globally — see kubernetes/apps/honcho/honcho/README.md.
+      - name: hermes-managed
+        configMap:
+          name: hermes-managed
+      - name: honcho-client-secrets
+        secret:
+          secretName: honcho-client-secrets
 
     extraInitContainers:
+      # The Honcho memory plugin ships in the Hermes image, but its SDK
+      # (honcho-ai) does not. Without it the plugin logs "honcho-ai package
+      # not installed — plugin inactive" at debug level and silently does
+      # nothing: memory looks configured but never records or recalls.
+      #
+      # Hermes seals its own venv (HERMES_DISABLE_LAZY_INSTALLS=1) and
+      # redirects runtime installs to HERMES_LAZY_INSTALL_TARGET on the data
+      # volume, which hermes_bootstrap appends to sys.path at startup. This
+      # installs into that same directory so the import resolves on boot.
+      #
+      # --no-deps is deliberate: honcho-ai needs only httpx>=0.28 and
+      # pydantic>=2, both already in the core venv at compatible versions.
+      # Pulling its own copies into an append-only path risks two versions of
+      # pydantic in one interpreter.
+      - name: install-honcho-sdk
+        image: nousresearch/hermes-agent:v2026.8.27
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            target=/opt/data/lazy-packages
+            mkdir -p "$target"
+            if [ -d "$target/honcho" ]; then
+              echo "honcho-ai already present, skipping"
+              exit 0
+            fi
+            uv pip install --target "$target" --no-deps 'honcho-ai==2.2.0'
+            echo "installed honcho-ai into $target"
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+
       - name: seed-profiles
         image: busybox:1.38
         command:
@@ -92,6 +135,34 @@ spec:
               done
               echo "seeded .env for profile: $profile"
             done
+
+            # Honcho memory config, written ONCE at the Hermes root rather
+            # than per profile. The plugin resolves $HERMES_HOME/honcho.json
+            # first and falls back to the root file, so every profile —
+            # including ones created later at runtime — picks this up without
+            # needing its own copy. Each profile still gets an isolated AI
+            # peer (hermes_<profile>) while sharing the workspace, so they
+            # share one view of the user but keep separate self-models.
+            #
+            # apiKey lives at the top level: the plugin only substitutes its
+            # "local" placeholder for loopback/RFC1918 URLs, and a cluster DNS
+            # name is neither, so the real JWT is required here.
+            api_key="$(cat /honcho-client-secrets/HONCHO_API_KEY)"
+            cat > /opt/data/honcho.json <<EOF
+            {
+              "enabled": true,
+              "baseUrl": "http://honcho.honcho.svc.cluster.local:8000",
+              "apiKey": "$api_key",
+              "workspace": "hermes",
+              "peerName": "kalitsune",
+              "recallMode": "hybrid",
+              "writeFrequency": "async",
+              "sessionStrategy": "global",
+              "saveMessages": true
+            }
+            EOF
+            chmod 600 /opt/data/honcho.json
+            echo "seeded honcho.json"
         volumeMounts:
           - name: data
             mountPath: /opt/data
@@ -101,6 +172,17 @@ spec:
           - name: infra-expert-secrets
             mountPath: /hermes-profile-secrets/infra-expert
             readOnly: true
+          - name: honcho-client-secrets
+            mountPath: /honcho-client-secrets
+            readOnly: true
+
+    extraVolumeMounts:
+      # Managed scope directory. Hermes merges this config.yaml over every
+      # profile's own, so `memory.provider: honcho` applies globally instead
+      # of being copy-pasted into each profile's config.yaml.
+      - name: hermes-managed
+        mountPath: /etc/hermes
+        readOnly: true
 
     extraEnv:
       - name: HERMES_DASHBOARD

@@ -179,6 +179,8 @@ Checklist:
 - [ ] resource requests set; limits only where the workload actually needs them
 - [ ] any PVC sets `storageClassName: truenas-nfs` explicitly;
 - [ ] if the app stores state in SQLite, use `storageClassName: local-path`
+- [ ] if the app runs its own database server (Postgres, MySQL, Mongo), use
+      `storageClassName: local-path` — see [Storage](#storage)
 - [ ] if it needs to be reachable: an `HTTPRoute` in the app's own directory as
       `httproute.yaml`, listed in that app's `kustomization.yaml` — not an
       Ingress, and not under `network/`. This cluster uses Gateway API via
@@ -285,6 +287,36 @@ Persistent volumes use the **`truenas-nfs`** storage class.
 - Check the reclaim policy before you touch an existing PVC:
   `kubectl get sc truenas-nfs -o yaml`. Never delete a PVC — that is a
   stop-and-ask, no matter how obviously orphaned it looks.
+
+### When not to use NFS
+
+`truenas-nfs` is the default, not the universal answer. **A database that
+manages its own on-disk files does not belong on NFS**, because it depends on
+POSIX `fsync()` durability and byte-range locking that NFS does not reliably
+provide. The failure mode is silent corruption discovered long after the fact,
+not an error at write time.
+
+Use **`local-path`** instead for:
+
+- **Embedded databases** — SQLite, and anything that ships its own storage
+  engine. See the SQLite trap below.
+- **A real database server** — PostgreSQL, MySQL, MongoDB. Honcho's Postgres
+  (`apps/honcho/honcho/postgres.yaml`) is the worked example.
+
+What you give up with `local-path`, and must accept consciously:
+
+- The volume is **pinned to one node**. The pod cannot be rescheduled elsewhere
+  without losing its data. On this two-node cluster the control plane is
+  tainted, so everything lands on the worker anyway — but this stops being
+  free the moment a third node is added.
+- **No TrueNAS snapshots.** Back up at the application layer instead
+  (`pg_dump` on a schedule), and say so in the app's README.
+- `volumeBindingMode: WaitForFirstConsumer`, so the PVC stays `Pending` until a
+  pod is scheduled. That is expected, not a fault.
+
+Put the reasoning in a comment next to the `storageClassName` line. A future
+reader must not "fix" the inconsistency with the repo default by moving a
+database onto NFS.
 
 Two NFS-specific traps worth knowing before you file a bug against an app:
 
