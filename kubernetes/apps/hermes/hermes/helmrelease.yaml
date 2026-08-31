@@ -29,28 +29,52 @@ spec:
           - infra-expert
 
     extraVolumes:
-      - name: infra-expert-profile
+      - name: hermes-profiles
         configMap:
-          name: infra-expert-profile
+          name: hermes-profiles
 
     extraInitContainers:
-      - name: seed-infra-expert
+      - name: seed-profiles
         image: busybox:1.38
         command:
           - sh
           - -c
           - |
             set -eu
-            dest=/opt/data/profiles/infra-expert
-            mkdir -p "$dest"
-            cp /infra-profile/SOUL.md "$dest/SOUL.md"
-            cp /infra-profile/config.yaml "$dest/config.yaml"
-            echo "seeded $dest"
+            src=/opt/hermes/skills
+            cm=/hermes-profiles
+
+            # Derive unique profile names from ConfigMap keys (<profile>--<file>)
+            profiles=$(ls "$cm" | sed 's/--.*//' | sort -u)
+
+            for profile in $profiles; do
+              dest=/opt/data/profiles/$profile
+              mkdir -p "$dest"
+
+              for f in "$cm/$profile"--*; do
+                [ -e "$f" ] || continue
+                filename="${f##*--}"
+                if [ "$filename" = "skills" ]; then
+                  skills_dest="$dest/skills"
+                  rm -rf "$skills_dest"
+                  touch "$dest/.no-bundled-skills"
+                  while IFS= read -r skill || [ -n "$skill" ]; do
+                    [ -z "$skill" ] && continue
+                    mkdir -p "$skills_dest/$(dirname "$skill")"
+                    ln -s "$src/$skill" "$skills_dest/$(dirname "$skill")/"
+                  done < "$f"
+                else
+                  cp "$f" "$dest/$filename"
+                fi
+              done
+
+              echo "seeded profile: $profile"
+            done
         volumeMounts:
           - name: data
             mountPath: /opt/data
-          - name: infra-expert-profile
-            mountPath: /infra-profile
+          - name: hermes-profiles
+            mountPath: /hermes-profiles
             readOnly: true
 
     extraEnv:

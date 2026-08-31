@@ -1,7 +1,9 @@
 # AGENT.md
 
 Operating manual for coding agents working in this repository.
-Read this fully before touching anything.
+Read this fully before touching anything. Then, before working inside any
+specific directory, read the `README.md` and `AGENT.md` files present there —
+they override or extend the rules below for that component.
 
 ## What this repo is
 
@@ -150,9 +152,12 @@ Anything in the forbidden list under rule 1, plus:
 ### Editing an existing app
 
 1. Find the app under `kubernetes/apps/<namespace>/<app>/`.
-2. Read the sibling files first — the `kustomization.yaml` tells you what is
+2. Read any `README.md` and `AGENT.md` present in that directory before
+   touching anything. They contain app-specific conventions that override the
+   general rules here.
+3. Read the sibling files next — the `kustomization.yaml` tells you what is
    actually included. A file that exists but is not listed is dead.
-3. Make the edit. Keep it minimal and scoped to one app per commit.
+4. Make the edit. Keep it minimal and scoped to one app per commit.
 4. Validate locally before committing:
    ```
    kustomize build kubernetes/apps/<ns>/<app> | kubectl apply --dry-run=client -f -

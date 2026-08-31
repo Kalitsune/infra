@@ -11,10 +11,11 @@ resources:
   - hermes-auth-redirect.yaml
 
 configMapGenerator:
-  - name: infra-expert-profile
+  - name: hermes-profiles
     namespace: hermes
     options:
       disableNameSuffixHash: true
     files:
-      - SOUL.md=profiles/infra-expert/SOUL.md
-      - config.yaml=profiles/infra-expert/config.yaml
+      - infra-expert--SOUL.md=profiles/infra-expert/SOUL.md
+      - infra-expert--config.yaml=profiles/infra-expert/config.yaml
+      - infra-expert--skills=profiles/infra-expert/skills
