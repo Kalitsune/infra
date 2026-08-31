@@ -1,0 +1,16 @@
+toolsets:
+  - terminal
+  - file
+  - coding
+  - debugging
+  - code_execution
+  - web
+  - search
+  - vision
+  - memory
+  - context_engine
+  - safe
+  - clarify
+  - session_search
+  - skills
+  - todo

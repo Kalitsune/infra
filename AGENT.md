@@ -7,8 +7,11 @@ Read this fully before touching anything.
 
 The single source of truth for the homelab: a Dell R630 running Proxmox, a Talos
 Linux VM hosting a Kubernetes cluster, and everything running on that cluster.
-The cluster is reconciled by Flux; Cilium is the CNI and Envoy Gateway is the
-ingress/Gateway API implementation.
+The cluster is reconciled by Flux from `github.com/kalitsune/infra`; Cilium is
+the CNI and Envoy Gateway is the ingress/Gateway API implementation. TLS is
+Let's Encrypt with wildcard certificates for `*.kalitsune.net` and
+`*.lab.kalitsune.net`. Authentication is Pocket ID OIDC at
+`https://id.kalitsune.net`.
 
 This repo is declarative. Nothing here is a script that you run to "make it so" —
 it is state that a controller converges on. Act accordingly.
@@ -169,8 +172,8 @@ Checklist:
 - [ ] namespace exists or is created in the same commit
 - [ ] added to the parent `kustomization.yaml`
 - [ ] resource requests set; limits only where the workload actually needs them
-- [ ] any PVC sets `storageClassName: truenas-nfs` explicitly; if the app stores
-      state in SQLite, `replicas: 1` **and** `strategy: { type: Recreate }`
+- [ ] any PVC sets `storageClassName: truenas-nfs` explicitly;
+- [ ] if the app stores state in SQLite, use `storageClassName: local-path`
 - [ ] if it needs to be reachable: an `HTTPRoute` in the app's own directory as
       `httproute.yaml`, listed in that app's `kustomization.yaml` — not an
       Ingress, and not under `network/`. This cluster uses Gateway API via

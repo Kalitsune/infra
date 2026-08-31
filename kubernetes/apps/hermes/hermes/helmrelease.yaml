@@ -22,6 +22,37 @@ spec:
       strategy: rollback
       retries: 3
   values:
+    config:
+      gateway:
+        multiplex_profiles: true
+        multiplex_profile_allowlist:
+          - infra-expert
+
+    extraVolumes:
+      - name: infra-expert-profile
+        configMap:
+          name: infra-expert-profile
+
+    extraInitContainers:
+      - name: seed-infra-expert
+        image: busybox:1.38
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            dest=/opt/data/profiles/infra-expert
+            mkdir -p "$dest"
+            cp /infra-profile/SOUL.md "$dest/SOUL.md"
+            cp /infra-profile/config.yaml "$dest/config.yaml"
+            echo "seeded $dest"
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+          - name: infra-expert-profile
+            mountPath: /infra-profile
+            readOnly: true
+
     extraEnv:
       - name: HERMES_DASHBOARD
         value: "1"

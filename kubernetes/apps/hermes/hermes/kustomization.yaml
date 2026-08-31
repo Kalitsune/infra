@@ -9,3 +9,12 @@ resources:
   - httproute.yaml
   - rbac.yaml
   - hermes-auth-redirect.yaml
+
+configMapGenerator:
+  - name: infra-expert-profile
+    namespace: hermes
+    options:
+      disableNameSuffixHash: true
+    files:
+      - SOUL.md=profiles/infra-expert/SOUL.md
+      - config.yaml=profiles/infra-expert/config.yaml
