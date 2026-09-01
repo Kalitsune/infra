@@ -74,9 +74,28 @@ multi-workspace "fleet" page (`/v3/workspaces/list` is admin-only), which is
 irrelevant with a single workspace — navigate straight to `/workspaces/hermes`.
 
 ```bash
-# from a checkout of github.com/plastic-labs/honcho, with AUTH_JWT_SECRET set
-uv run python scripts/generate_jwt.py --workspace hermes --expires 90d
+umask 077
+kubectl -n honcho exec deploy/honcho-api -- \
+  python scripts/generate_jwt.py --workspace hermes --print-only \
+  > /opt/data/export/honcho-ui-token.txt
+chmod 600 /opt/data/export/honcho-ui-token.txt
 ```
+
+**Do not pass `--expires`.** Upstream's `generate_jwt.py` formats the `exp`
+claim as an ISO-8601 string, but the PyJWT version in the image rejects that at
+decode time:
+
+```
+DecodeError: Expiration Time claim (exp) must be an integer.
+```
+
+The token mints and its signature verifies, yet every request 401s with
+`{"detail":"Invalid JWT"}` — `src/security.py` catches `PyJWTError` and reports
+it as invalid, so the real cause is hidden. Honcho's own `verify_jwt` *does*
+handle a string `exp` (it parses with `fromisoformat`), but PyJWT rejects the
+claim before that code is reached. A non-expiring token is the working option
+until upstream emits a numeric `exp`; rotate it by rotating `AUTH_JWT_SECRET`,
+which also invalidates Hermes' credential.
 
 ## Two access paths, deliberately different
 

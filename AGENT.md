@@ -464,6 +464,56 @@ Never commit a plaintext secret, token, kubeconfig, talosconfig, age key, or
   rewrite history to remove it — that is a human decision, and the credential
   must be rotated regardless.
 
+### Never print a secret into the conversation
+
+Agent conversations are persisted to Honcho (`kubernetes/apps/honcho/`): every
+message, from both sides, is written to Postgres in plaintext, embedded into
+pgvector, and fed to the deriver. **The transcript is a storage medium.**
+
+A credential printed into a reply is therefore permanent and searchable. Honcho
+JWTs make this worse: they are stateless, so there is no revocation list, and
+invalidating one means rotating `AUTH_JWT_SECRET` — which breaks Hermes' own
+credential at the same time.
+
+So a secret must never appear in agent output, **including when the operator
+asks for it**. Hand it over through the filesystem instead:
+
+**Deliver secrets to `/opt/data/export/`.** The operator downloads the file and
+deletes it. The value must reach that file through a pipe or redirect — it must
+never pass through the agent's stdout on the way.
+
+```bash
+# Correct: computed in the pod, redirected straight to disk.
+umask 077
+kubectl -n honcho exec deploy/honcho-api -- \
+  python scripts/generate_jwt.py --workspace hermes --print-only \
+  > /opt/data/export/honcho-ui-token.txt
+chmod 600 /opt/data/export/honcho-ui-token.txt
+```
+
+Rules for this path:
+
+- `umask 077` **before** the redirect, then `chmod 600`. The shell creates the
+  file before the command runs, so mode must be right from the start.
+- Report only non-sensitive metadata: byte count, claims, expiry, a SHA-256
+  fingerprint prefix, and probe results. Never the value.
+- Redirect stderr to a file too — a tool that fails may print the secret in an
+  error message.
+- **Verify by using, not by reading.** Exercise the credential with
+  `-H "Authorization: Bearer $(cat <file>)"` and report status codes. Command
+  substitution keeps the value inside the shell.
+- Check the deny as well as the allow: a least-privilege token must be refused
+  (401) on the routes it should not reach.
+- Never `cat` the file, never echo it, and do not read it into a variable the
+  agent then prints.
+
+Reading a secret out of another process's memory (`/proc/<pid>/environ`) to
+avoid asking for it is credential exfiltration. Ask, or read from the cluster
+with `kubectl`.
+
+`/opt/data/export/` is a drop box, not storage: it lives on the NFS volume,
+which persists across pod restarts, so anything left there stays there.
+
 ## Conventions
 
 - Commits: `<scope>: <imperative summary>`, e.g. `apps/media: bump jellyfin to 10.10.3`,
