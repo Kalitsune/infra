@@ -237,12 +237,40 @@ Rules:
   of what it is called — the name does not enforce anything on its own, so check
   which listener you are binding to.
 
+**A federated service is the one legitimate exception, and it still has to earn
+it.** A Matrix homeserver (`apps/matrix/continuwuity`) is on the apex because
+other homeservers must reach it or it cannot federate at all — public exposure
+is the function, not a convenience. When that applies, narrow the surface
+instead of the hostname: gate account creation, keep directories and indexes
+unfederated, and give the host nothing behind it but the service itself. Write
+that reasoning into the route, not just the commit message.
+
 ### `kubernetes/cicd/flux-system/`
 
-Flux's own bootstrap. Changes here can break the mechanism that would deliver
-the fix. Treat as read-only: propose a diff, explain the failure mode, and let a
+This directory holds two very different things, and the rules differ.
+
+**`cicd/flux-system/flux-system/` (the `gotk-*` files) — propose only.**
+Flux's own bootstrap: the controllers, the `GitRepository`, and the root
+`Kustomization`. Changes here can break the mechanism that would deliver the
+fix. Treat as read-only: propose a diff, explain the failure mode, and let a
 human apply it. Version bumps of the Flux components go through
 `flux bootstrap`/`flux install --export`, not hand-edited manifests.
+
+**`cicd/flux-system/flux-system/<app>.yaml` — the app entrypoints. Yours.**
+One file per app, each declaring the `Kustomization` that points at
+`./kubernetes/apps/<ns>/<app>`. The root `Kustomization` reconciles this
+directory, so **adding a file here is how a new app gets deployed at all** — an
+app directory with no entrypoint is inert, and there is nothing for a human to
+"apply" separately.
+
+A new sibling file is not a change to the delivery mechanism. It declares one
+new `Kustomization`, scoped by `path` and `prune` to its own subtree, so a
+mistake fails in isolation and cannot affect Flux or another app. Mirror an
+existing entrypoint, and ship it in the same commit as the app it points at.
+
+What still stops you: editing `gotk-components.yaml` or `gotk-sync.yaml`,
+changing the root `Kustomization`'s `path`/`sourceRef`/`interval`, or touching
+another app's entrypoint as a side effect.
 
 ### `talos/` and `proxmox/` — edit on request, never apply
 
@@ -526,7 +554,9 @@ which persists across pod restarts, so anything left there stays there.
 ## When to stop and ask
 
 - The change requires any command from the forbidden list.
-- The fix is in `cicd/flux-system/`.
+- The fix is in `cicd/flux-system/flux-system/` (the `gotk-*` bootstrap files).
+  Adding or editing an app's own entrypoint `Kustomization` alongside them is
+  normal work, not a stop-and-ask.
 - You concluded a fix belongs in `talos/` or `proxmox/` without being asked.
 - A tool you need is missing or unauthenticated.
 - Verification fails twice for the same reason.

@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: continuwuity-config
+  namespace: matrix
+data:
+  # Continuwuity takes every config-file option as an environment variable:
+  # the TOML key uppercased and prefixed with CONTINUWUITY_, with `__` for
+  # nesting (so [global.well_known].server -> CONTINUWUITY_WELL_KNOWN__SERVER).
+  # Reference: https://continuwuity.org/configuration.html
+  #
+  # Only the registration token lives in the Secret; everything here is
+  # non-sensitive and is deliberately kept greppable.
+
+  # ---------------------------------------------------------------- identity
+  #
+  # THE ONE IRREVERSIBLE SETTING. server_name is baked into every event, room
+  # and user ID this server ever creates. Changing it requires wiping the
+  # database, so it is set to the host that actually serves the homeserver
+  # rather than the apex domain.
+  #
+  # Using the apex `kalitsune.net` (for prettier `@user:kalitsune.net` IDs)
+  # would require serving /.well-known/matrix/{server,client} from
+  # https://kalitsune.net/, which currently resolves to 76.76.21.21 (Vercel) —
+  # a host this cluster does not control. That is a change outside this repo,
+  # so the self-contained option was chosen.
+  CONTINUWUITY_SERVER_NAME: matrix.kalitsune.net
+
+  # ------------------------------------------------------------- delegation
+  #
+  # Matrix federation defaults to port 8448. The `apps` Gateway only listens
+  # on 80/443, and adding an 8448 listener would mean touching
+  # kubernetes/network/ (the blast-radius directory) plus a new port-forward
+  # on the router.
+  #
+  # Serving .well-known delegation instead moves federation onto 443, which is
+  # already open and already terminated by Envoy. Continuwuity serves both
+  # well-known documents itself from this same hostname, so the delegation is
+  # self-consistent and needs no second web server.
+  CONTINUWUITY_WELL_KNOWN__SERVER: matrix.kalitsune.net:443
+  CONTINUWUITY_WELL_KNOWN__CLIENT: https://matrix.kalitsune.net
+
+  # ------------------------------------------------------------- networking
+  # 0.0.0.0 is required in a container; 8008 is the image's own EXPOSE.
+  # Deliberately NOT the upstream example's port 80, which needs
+  # NET_BIND_SERVICE plus a net.ipv4.ip_unprivileged_port_start sysctl for no
+  # benefit behind a reverse proxy.
+  CONTINUWUITY_ADDRESS: 0.0.0.0
+  CONTINUWUITY_PORT: "8008"
+
+  # ---------------------------------------------------------------- storage
+  # Mount root, matching the upstream docker-compose. RocksDB keeps the
+  # database *and* all uploaded media under here.
+  CONTINUWUITY_DATABASE_PATH: /var/lib/continuwuity
+
+  # ----------------------------------------------------------- registration
+  #
+  # Open registration is refused at startup unless the server was compiled
+  # with the "openreg" feature, so the choice is really: closed, or gated by a
+  # token. Token-gated is chosen so the first account can be created from a
+  # normal Matrix client with no exec into the pod.
+  #
+  # The first account to register is automatically made admin and invited to
+  # the admin room. CONTINUWUITY_REGISTRATION_TOKEN comes from the Secret.
+  CONTINUWUITY_ALLOW_REGISTRATION: "true"
+
+  # ---------------------------------------------------------------- privacy
+  # Do not advertise this server's room directory to the wider federation,
+  # and keep the built-in web pages out of search engines. Both are the
+  # upstream defaults; they are pinned here because they are security
+  # relevant and a default flip should not silently change behaviour.
+  CONTINUWUITY_ALLOW_PUBLIC_ROOM_DIRECTORY_OVER_FEDERATION: "false"
+  CONTINUWUITY_ALLOW_WEB_INDEXING: "false"
+
+  # ------------------------------------------------------------- federation
+  CONTINUWUITY_ALLOW_FEDERATION: "true"
+  CONTINUWUITY_ALLOW_ENCRYPTION: "true"
+  # Notary servers used to fetch other homeservers' signing keys. matrix.org
+  # is the conventional choice and makes the first join to a large room
+  # dramatically faster, because keys come from one batch query instead of
+  # hundreds of individual origin servers.
+  CONTINUWUITY_TRUSTED_SERVERS: '["matrix.org"]'
+
+  # -------------------------------------------------------------- behaviour
+  # Upstream appends the trans pride flag to every new display name by
+  # default. Disabled here: a private homeserver should not decorate its
+  # users' names without being asked. Purely cosmetic and safe to revert.
+  CONTINUWUITY_NEW_USER_DISPLAYNAME_SUFFIX: ""
+
+  # 50 MB uploads (default is 20 MB). Envoy streams request bodies rather
+  # than buffering them, so no matching gateway setting is needed.
+  CONTINUWUITY_MAX_REQUEST_SIZE: "50000000"
+
+  # ------------------------------------------------------------- footprint
+  #
+  # Left to itself Continuwuity sizes its caches from the *node's* core count
+  # (8 here), not the container's share, which would blow past the memory
+  # limit on a box shared with everything else in this cluster. These pin it
+  # to a modest, predictable working set.
+  TOKIO_WORKER_THREADS: "2"
+  CONTINUWUITY_ROCKSDB_PARALLELISM_THREADS: "2"
+  CONTINUWUITY_DB_CACHE_CAPACITY_MB: "256.0"
+  CONTINUWUITY_DB_WRITE_BUFFER_CAPACITY_MB: "48.0"
+  CONTINUWUITY_CACHE_CAPACITY_MODIFIER: "0.5"
+
+  CONTINUWUITY_LOG: info
+  # No TTY on stdout; ANSI escapes would just be noise in `kubectl logs`.
+  CONTINUWUITY_LOG_COLORS: "false"
