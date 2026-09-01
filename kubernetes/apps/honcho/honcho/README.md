@@ -34,14 +34,45 @@ context. It is a static React SPA served by nginx, which proxies `/api/`
 **server-side** to whatever host the browser names in an `X-Honcho-Upstream`
 header — so the Honcho API is never exposed to the browser and there is no CORS.
 
-Two consequences that are easy to get wrong:
+### Why it is a sidecar, not its own Deployment
 
-- `OPENCONCHO_DEFAULT_HONCHO_URL` must be the **in-cluster** address. Set it to
-  the public hostname and nginx would proxy back through oauth2-proxy, holding
-  no OIDC cookie, and get a login redirect instead of an API response.
-- `OPENCONCHO_UPSTREAM_ALLOWLIST` **must** be set. Upstream leaves it open
-  because it assumes a localhost-only bind; exposed as we do, an unpinned proxy
-  would forward to any host a request names — an SSRF relay onto the cluster
+The UI runs as a second container **inside the `honcho-api` pod**, sharing its
+network namespace so the backend URL can be `http://127.0.0.1:8000`.
+
+That is not cosmetic. The settings form refuses to store an API token unless the
+base URL is HTTPS *or* a loopback host:
+
+```ts
+// packages/web/src/lib/security.ts
+export function isSecureTokenTransport(baseUrl: string): boolean {
+  if (parsed.protocol === "https:") return true;
+  if (parsed.protocol === "http:" && LOOPBACK_HOSTS.has(hostname)) return true;
+  return false;   // → "API tokens require HTTPS unless connecting to localhost."
+}
+```
+
+A Service DNS name over plain HTTP (`http://honcho.honcho.svc.cluster.local:8000`)
+fails that check, so the token cannot be saved and every request 401s. The
+alternatives were publishing the API over TLS on its own hostname — which drops
+the OIDC gate in front of it — or colocating. Colocating keeps the API
+unpublished.
+
+The check runs in the **browser**, against the URL string; the request is made
+by **nginx inside the pod**, where `127.0.0.1:8000` genuinely is the `api`
+container. Those two facts agree only because the containers are colocated.
+
+Consequences worth knowing:
+
+- The `openconcho` Service selects the `honcho-api` pod and targets its `ui`
+  port. Both Services front the same pod.
+- **No pod-level `runAsUser`.** The images run as different uids (honcho 100,
+  nginx-unprivileged 101); forcing one onto the other breaks file ownership.
+  Security context is per-container, with `fsGroup: 101` for nginx's writable
+  mounts.
+- A UI restart restarts the API too, since they share a pod lifecycle.
+- `OPENCONCHO_UPSTREAM_ALLOWLIST` is `127.0.0.1` — the proxy can now only reach
+  its own pod. Unset, it forwards anywhere a request names (upstream defaults it
+  open, assuming a localhost-only bind), which is an SSRF relay onto the cluster
   network.
 
 ### Paths on `honcho.lab.kalitsune.net`
@@ -65,9 +96,20 @@ kubectl -n honcho port-forward svc/honcho 8000:8000
 ### The UI's token
 
 The UI asks for the Honcho URL and token **in the browser** and keeps them in
-`localStorage` — nothing is baked into this deployment. Do not paste the admin
+`localStorage` under `openconcho:instances` — nothing is baked into this
+deployment, and there is no env var to preseed a token. Do not paste the admin
 JWT from `honcho-client-secrets`: that is Hermes' credential and it can
 administer the server.
+
+In **Settings**, enter:
+
+| Field | Value |
+| ----- | ----- |
+| Base URL | `http://127.0.0.1:8000` |
+| Token | a workspace-scoped JWT (below) |
+
+The loopback URL is what satisfies the transport guard; it resolves to the `api`
+container in the same pod.
 
 Mint a workspace-scoped token instead. It covers every view except the
 multi-workspace "fleet" page (`/v3/workspaces/list` is admin-only), which is

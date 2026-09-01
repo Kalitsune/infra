@@ -26,6 +26,16 @@ spec:
       labels:
         app.kubernetes.io/name: honcho-api
     spec:
+      # No pod-level runAsUser: the two containers run as DIFFERENT uids
+      # (honcho 100, nginx-unprivileged 101) and forcing either one onto the
+      # other breaks file ownership inside its image. Security context is set
+      # per-container below.
+      #
+      # fsGroup 101 makes the emptyDir mounts writable by nginx. The api
+      # container already runs with gid 101 and mounts no volumes, so this is
+      # a no-op for it.
+      securityContext:
+        fsGroup: 101
       containers:
         - name: api
           image: ghcr.io/plastic-labs/honcho:v3.1.0
@@ -70,6 +80,83 @@ spec:
               memory: 512Mi
             limits:
               memory: 2Gi
+
+        # OpenConcho web UI, colocated as a sidecar rather than run as its own
+        # Deployment. Sharing this pod's network namespace lets the browser
+        # name the backend as http://127.0.0.1:8000.
+        #
+        # That matters because the UI refuses to store an API token unless the
+        # base URL is HTTPS *or* a loopback host
+        # (packages/web/src/lib/security.ts, isSecureTokenTransport). A Service
+        # DNS name over plain HTTP is rejected client-side, so a same-pod
+        # loopback address is what makes the token field usable without
+        # publishing the API over TLS on its own hostname.
+        #
+        # The check runs in the BROWSER against the URL string; the request is
+        # made by this nginx inside the pod, where 127.0.0.1:8000 really is the
+        # api container. The two agree only because they are colocated.
+        - name: openconcho
+          image: ghcr.io/offendingcommit/openconcho-web:0.16.2
+          securityContext:
+            runAsUser: 101
+            runAsGroup: 101
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: [ALL]
+            seccompProfile:
+              type: RuntimeDefault
+          env:
+            - name: OPENCONCHO_DEFAULT_HONCHO_URL
+              value: "http://127.0.0.1:8000"
+            # SSRF guard, now narrowed to loopback. Without it this /api/
+            # proxy forwards anywhere a request names — an open relay onto the
+            # cluster network. Upstream defaults it to open because upstream
+            # assumes a localhost-only bind.
+            - name: OPENCONCHO_UPSTREAM_ALLOWLIST
+              value: "127.0.0.1"
+          ports:
+            - name: ui
+              containerPort: 8080
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: ui
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: ui
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+          volumeMounts:
+            # nginx needs these writable; its root filesystem is read-only.
+            # /tmp also holds the entrypoint-rendered config.js.
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d
+            - name: nginx-cache
+              mountPath: /var/cache/nginx
+            - name: nginx-run
+              mountPath: /var/run
+            - name: nginx-tmp
+              mountPath: /tmp
+      volumes:
+        - name: nginx-conf
+          emptyDir: {}
+        - name: nginx-cache
+          emptyDir: {}
+        - name: nginx-run
+          emptyDir: {}
+        - name: nginx-tmp
+          emptyDir: {}
 ---
 apiVersion: apps/v1
 kind: Deployment
