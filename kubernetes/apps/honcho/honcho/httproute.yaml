@@ -9,11 +9,36 @@ spec:
       namespace: envoy-gateway-system
   hostnames:
     # Internal-only. This surface exposes every peer representation and
-    # conclusion Honcho holds, and /docs issues live authenticated API calls,
-    # so it must never move to the apex domain.
+    # conclusion Honcho holds, so it must never move to the apex domain.
     - honcho.lab.kalitsune.net
   rules:
-    # Everything goes through oauth2-proxy, never straight to port 8000.
+    # Rule 1 — send /workspaces straight to the only workspace.
+    #
+    # The UI's workspace LIST page calls POST /v3/workspaces/list, which is
+    # admin-only in Honcho. The browser holds a deliberately workspace-scoped
+    # token, so that page 401s and renders an error. Every other view works,
+    # because they are scoped to a named workspace.
+    #
+    # Exact match, so /workspaces/<id> and its children are untouched.
+    #
+    # CAVEAT: this only fires on a real HTTP request — typing the URL, a
+    # refresh, or a bookmark. The sidebar link is a client-side router
+    # navigation that never reaches the gateway, so clicking "Workspaces"
+    # still renders the failing list page. Fixing that needs a change in the
+    # app itself; see the README.
+    - matches:
+        - path:
+            type: Exact
+            value: /workspaces
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            statusCode: 302
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /workspaces/hermes
+
+    # Rule 2 — everything else through the OIDC gate to the UI.
     - backendRefs:
         - name: oauth2-proxy
           port: 4180
