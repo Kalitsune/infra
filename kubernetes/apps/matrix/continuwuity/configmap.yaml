@@ -57,11 +57,19 @@ data:
   #
   # Open registration is refused at startup unless the server was compiled
   # with the "openreg" feature, so the choice is really: closed, or gated by a
-  # token. Token-gated is chosen so the first account can be created from a
-  # normal Matrix client with no exec into the pod.
+  # token. Token-gated is chosen so accounts can be created from a normal
+  # Matrix client with no exec into the pod.
   #
-  # The first account to register is automatically made admin and invited to
-  # the admin room. CONTINUWUITY_REGISTRATION_TOKEN comes from the Secret.
+  # IMPORTANT — this token does NOT create the first account. Until one
+  # non-server local user exists, continuwuity is in "first run mode" and
+  # `validate_token` rejects every token except a single-use bootstrap token
+  # it generates in memory at startup and prints to stderr. Read it with
+  # `kubectl -n matrix logs continuwuity-0`. It is never written to the
+  # database, so it changes on every pod restart.
+  #
+  # CONTINUWUITY_REGISTRATION_TOKEN (from the Secret) only starts working
+  # after that first account exists. The first account is automatically made
+  # server admin and invited to the admin room.
   CONTINUWUITY_ALLOW_REGISTRATION: "true"
 
   # ---------------------------------------------------------------- privacy

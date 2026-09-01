@@ -100,15 +100,34 @@ because Continuwuity otherwise sizes its caches from the **node's** core count
 
 ## First run
 
-The first account registered is automatically made **server admin** and
-invited to the admin room, where `!admin` commands work.
+Continuwuity is in **first-run mode** until one real local account exists, and
+in that mode it rejects *every* registration token except a single-use
+bootstrap token it generates in memory at startup and prints to stderr. The
+token in `secret.yaml` does not work yet — that is by design upstream, not a
+misconfiguration.
 
-1. Point any Matrix client (Element, Cinny, FluffyChat) at
-   `https://matrix.kalitsune.net`.
-2. Register. Supply the registration token when asked.
-3. Accept the invite to the admin room.
+So the order is:
 
-To read the token without printing it into a terminal:
+1. Read the bootstrap token from the log:
+
+   ```bash
+   kubectl -n matrix logs continuwuity-0 | grep -A3 'Welcome to Continuwuity'
+   ```
+
+   It is regenerated on every pod restart and never written to the database.
+   If it is ever captured somewhere it should not be (a log shipper, a pasted
+   terminal, an agent transcript), rotate it by bumping
+   `kalitsune.net/bootstrap-token-generation` in `statefulset.yaml` and
+   pushing — the restart invalidates the old one permanently.
+
+2. Point a Matrix client (Element, Cinny, FluffyChat) at
+   `https://matrix.kalitsune.net`, register, and supply that token.
+
+3. That first account is automatically made **server admin** and invited to
+   the admin room, where `!admin` commands work.
+
+From then on `CONTINUWUITY_REGISTRATION_TOKEN` in `secret.yaml` is the live
+token for any further accounts. To read it without printing it to a terminal:
 
 ```bash
 kubectl -n matrix get secret continuwuity-secrets \
