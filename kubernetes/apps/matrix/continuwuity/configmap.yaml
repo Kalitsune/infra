@@ -40,6 +40,21 @@ data:
   CONTINUWUITY_WELL_KNOWN__SERVER: matrix.kalitsune.net:443
   CONTINUWUITY_WELL_KNOWN__CLIENT: https://matrix.kalitsune.net
 
+  # ----------------------------------------------------------- support info
+  #
+  # MSC1929 support contact, served at /.well-known/matrix/support. Without
+  # it the server logs:
+  #
+  #   WARN config::check: No support contact information (support_email or
+  #   support_mxid) is configured in the well_known
+  #
+  # and, per the config reference, falls back to listing *every* server admin
+  # — so setting an explicit address is the narrower choice, not just the
+  # quieter one. This endpoint is public by design: it is how another
+  # server's operator reports abuse or a federation problem.
+  CONTINUWUITY_WELL_KNOWN__SUPPORT_EMAIL: admin@kalitsune.net
+  CONTINUWUITY_WELL_KNOWN__SUPPORT_ROLE: m.role.admin
+
   # ------------------------------------------------------------- networking
   # 0.0.0.0 is required in a container; 8008 is the image's own EXPOSE.
   # Deliberately NOT the upstream example's port 80, which needs

@@ -46,6 +46,26 @@ spec:
       labels:
         app.kubernetes.io/name: continuwuity
     spec:
+      # Kubernetes injects legacy "service link" env vars for every Service in
+      # the namespace, named <SERVICE>_<...> — and this Service is called
+      # `continuwuity`, so they collide head-on with the CONTINUWUITY_ config
+      # prefix. The server parsed seven of them as config keys and logged:
+      #
+      #   WARN config::check: Config parameter "service_host" is unknown to
+      #   conduwuit, ignoring.   (also service_port, service_port_http,
+      #   port_8008_tcp, _addr, _port, _proto)
+      #
+      # Those seven are merely noise because no such config key exists. The
+      # real hazard is CONTINUWUITY_PORT, which k8s also injects as
+      # `tcp://<clusterIP>:8008` and which IS a valid config key (`port`).
+      # Today the ConfigMap overrides it — envFrom wins over service links —
+      # so deleting that one ConfigMap entry, an apparently harmless cleanup,
+      # would silently feed the server a URL where it expects a port number.
+      #
+      # Nothing here needs service links: this pod talks to no other Service,
+      # and DNS is unaffected. Disabling them removes the whole class of
+      # collision rather than papering over the symptom.
+      enableServiceLinks: false
       securityContext:
         # The image ships no USER and would otherwise run as root. Nothing
         # here needs it: the only writable path is the data volume, which
