@@ -75,3 +75,61 @@ The `seed-profiles` init container (busybox) runs before Hermes starts on every 
 
 1. Copies `SOUL.md` and `config.yaml` from the ConfigMap into the profile's directory on the PVC.
 2. If a `skills` file is present, wipes `<profile>/skills/`, writes `.no-bundled-skills` to suppress Hermes auto-seeding, then creates symlinks from the profile's skills directory into `/opt/hermes/skills/` (baked into the Hermes image). Symlinks mean no data duplication and skills stay in sync with image upgrades.
+
+## Chart upgrades: the immutable `volumeClaimTemplates` trap
+
+`spec.chart.spec.version` is a range (`>=1.11.0 <2.0.0`), so a new chart
+release is picked up automatically — and **every one of them failed to
+upgrade** with:
+
+```
+StatefulSet.apps "hermes-hermes-agent" is invalid: spec: Forbidden:
+updates to statefulset spec for fields other than 'replicas', 'ordinals',
+'template', 'updateStrategy', 'revisionHistoryLimit',
+'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds' are forbidden
+```
+
+The cause is not this repo's values. The chart stamps
+`helm.sh/chart: hermes-agent-<version>` and
+`app.kubernetes.io/version: <appVersion>` onto
+`volumeClaimTemplates[0].metadata.labels`. A StatefulSet's
+`volumeClaimTemplates` is **immutable**, so those two cosmetic labels change on
+every release and the API server rejects the whole update. Flux then rolls back,
+leaving `Ready=False` with `RetriesExceeded` while the release stays on the old
+chart — so the agent looks healthy but is pinned and no config change can land.
+
+`spec.upgrade.force: true` does **not** fix this: it is a replace-style patch,
+which still cannot mutate an immutable field.
+
+The fix is the `postRenderers` block in `helmrelease.yaml`, which pins those two
+labels back to the values frozen on the live object. It is version-independent —
+the labels never change again, so future bumps stop tripping over them — and it
+touches only PVC-template metadata, which is decorative.
+
+Do not "modernise" those pinned values to match a newer chart. They must equal
+what is on the live StatefulSet:
+
+```sh
+kubectl -n hermes get sts hermes-hermes-agent \
+  -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.labels}'
+```
+
+Verify any chart bump with a real **update** dry-run before pushing. The
+namespace flag is essential — without `-n hermes` kubectl validates against
+`default`, reports `created`, and silently exercises the CREATE path, which
+never checks immutability:
+
+```sh
+helm template hermes oci://ghcr.io/jyje/hermes-agent-helm/hermes-agent \
+  --version <new> -n hermes -f <values> > /tmp/new.yaml
+kubectl apply --dry-run=server -n hermes -f /tmp/new.yaml   # expect "configured"
+```
+
+`kubectl diff` is not sufficient here: it computes a dry-run patch and does not
+run the StatefulSet update validation, so it shows the label delta without ever
+reporting that it is forbidden.
+
+Changing the PVC template for real (size, storage class) is a different job: it
+needs the StatefulSet recreated with `--cascade=orphan` so the PVC survives.
+That is a human operation — it is outside the git-only write path.
+

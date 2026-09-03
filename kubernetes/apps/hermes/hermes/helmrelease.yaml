@@ -21,6 +21,45 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+
+  # Pin the two chart-version labels the chart stamps onto the PVC template.
+  #
+  # A StatefulSet's volumeClaimTemplates is IMMUTABLE, but the chart writes
+  # `helm.sh/chart: hermes-agent-<version>` and
+  # `app.kubernetes.io/version: <appVersion>` into
+  # volumeClaimTemplates[0].metadata.labels. Both change on every chart
+  # release, so the API server rejected the entire StatefulSet update:
+  #
+  #   StatefulSet.apps "hermes-hermes-agent" is invalid: spec: Forbidden:
+  #   updates to statefulset spec for fields other than 'replicas', ...
+  #
+  # Since `version` above is a RANGE, this broke every automatic bump: Flux
+  # retried, rolled back, and parked at Ready=False/RetriesExceeded while
+  # still running the old chart — no values change could reach the cluster.
+  # `upgrade.force` does not help; it is a replace-style patch and still
+  # cannot mutate an immutable field.
+  #
+  # These values are deliberately FROZEN to what is on the live object, not
+  # to the current chart version. They must match, or the upgrade is refused:
+  #   kubectl -n hermes get sts hermes-hermes-agent \
+  #     -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.labels}'
+  #
+  # Only PVC-template metadata is affected, which is decorative — the pod
+  # template, image and appVersion labels elsewhere still track the chart.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              version: v1
+              kind: StatefulSet
+              name: hermes-hermes-agent
+            patch: |
+              - op: replace
+                path: /spec/volumeClaimTemplates/0/metadata/labels/helm.sh~1chart
+                value: hermes-agent-1.12.1
+              - op: replace
+                path: /spec/volumeClaimTemplates/0/metadata/labels/app.kubernetes.io~1version
+                value: v2026.8.27
   values:
     config:
       model:
