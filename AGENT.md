@@ -240,10 +240,15 @@ Rules:
 **A federated service is the one legitimate exception, and it still has to earn
 it.** A Matrix homeserver (`apps/matrix/continuwuity`) is on the apex because
 other homeservers must reach it or it cannot federate at all — public exposure
-is the function, not a convenience. When that applies, narrow the surface
-instead of the hostname: gate account creation, keep directories and indexes
-unfederated, and give the host nothing behind it but the service itself. Write
-that reasoning into the route, not just the commit message.
+is the function, not a convenience. Its `server_name` is the bare apex
+`kalitsune.net` (so user IDs read `@you:kalitsune.net`) while the service is
+served from `matrix.kalitsune.net`; the apex delegates via
+`/.well-known/matrix/{server,client}`, which is hosted by the website project
+on Vercel, **not** by this cluster. `server_name` cannot be changed without
+wiping the database, so treat it as immutable. When that applies, narrow the
+surface instead of the hostname: gate account creation, keep directories and
+indexes unfederated, and give the host nothing behind it but the service
+itself. Write that reasoning into the route, not just the commit message.
 
 ### `kubernetes/cicd/flux-system/`
 

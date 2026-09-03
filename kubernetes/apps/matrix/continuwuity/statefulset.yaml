@@ -43,6 +43,22 @@ spec:
         # generation 2: the token from the initial deploy was read into an
         # agent transcript, which is persisted storage. Rotated.
         kalitsune.net/bootstrap-token-generation: "2"
+
+        # Bump whenever configmap.yaml changes.
+        #
+        # A ConfigMap consumed through `envFrom` is read once, at container
+        # start. Editing it does NOT roll a StatefulSet — Kubernetes sees an
+        # unchanged pod template and does nothing, so the new value silently
+        # never reaches the process and the app keeps running the old config
+        # until something unrelated happens to restart it. Every previous
+        # ConfigMap edit here only took effect because it happened to ship
+        # alongside a pod-template change.
+        #
+        # This annotation IS part of the pod template, so bumping it in the
+        # same commit as a config edit is what actually applies that edit.
+        #
+        # generation 2: server_name changed to the apex, kalitsune.net.
+        kalitsune.net/config-generation: "2"
       labels:
         app.kubernetes.io/name: continuwuity
     spec:

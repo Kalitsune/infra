@@ -16,27 +16,49 @@ data:
   #
   # THE ONE IRREVERSIBLE SETTING. server_name is baked into every event, room
   # and user ID this server ever creates. Changing it requires wiping the
-  # database, so it is set to the host that actually serves the homeserver
-  # rather than the apex domain.
+  # database, so it is set deliberately and must not be "tidied" later.
   #
-  # Using the apex `kalitsune.net` (for prettier `@user:kalitsune.net` IDs)
-  # would require serving /.well-known/matrix/{server,client} from
-  # https://kalitsune.net/, which currently resolves to 76.76.21.21 (Vercel) —
-  # a host this cluster does not control. That is a change outside this repo,
-  # so the self-contained option was chosen.
-  CONTINUWUITY_SERVER_NAME: matrix.kalitsune.net
+  # The apex is used so user IDs read @you:kalitsune.net rather than
+  # @you:matrix.kalitsune.net. That is the whole reason to accept the cost
+  # below; it is a permanent, cosmetic-but-public choice.
+  #
+  # THIS REQUIRES DELEGATION SERVED FROM THE APEX. Other homeservers and
+  # clients resolve the *server_name* — kalitsune.net — not the host that
+  # actually runs the software. So https://kalitsune.net/ must serve:
+  #
+  #   /.well-known/matrix/server  -> {"m.server": "matrix.kalitsune.net:443"}
+  #   /.well-known/matrix/client  -> {"m.homeserver":
+  #                                    {"base_url": "https://matrix.kalitsune.net"}}
+  #
+  # kalitsune.net resolves to 76.76.21.21 (Vercel), which this cluster does
+  # not control, so those two documents are served from the website project,
+  # NOT from here. Continuwuity still serves its own copies at
+  # matrix.kalitsune.net, but nothing federating ever reads those now —
+  # they are resolved from the apex.
+  #
+  # UNTIL THE APEX SERVES THEM, FEDERATION IS DOWN: remote servers cannot
+  # discover where kalitsune.net lives. Local clients pointed explicitly at
+  # https://matrix.kalitsune.net keep working throughout.
+  CONTINUWUITY_SERVER_NAME: kalitsune.net
 
   # ------------------------------------------------------------- delegation
   #
   # Matrix federation defaults to port 8448. The `apps` Gateway only listens
   # on 80/443, and adding an 8448 listener would mean touching
   # kubernetes/network/ (the blast-radius directory) plus a new port-forward
-  # on the router.
+  # on the router. Delegation moves federation onto 443, which is already
+  # open and already terminated by Envoy.
   #
-  # Serving .well-known delegation instead moves federation onto 443, which is
-  # already open and already terminated by Envoy. Continuwuity serves both
-  # well-known documents itself from this same hostname, so the delegation is
-  # self-consistent and needs no second web server.
+  # These two values are the CONTENT Continuwuity puts in the well-known
+  # documents it serves at matrix.kalitsune.net. Since server_name is now the
+  # apex, federating servers resolve kalitsune.net instead and never read
+  # these — the authoritative copies are the ones hosted on the apex (Vercel).
+  #
+  # They are kept, and kept identical to the apex's, for two reasons: a client
+  # pointed straight at matrix.kalitsune.net still discovers the right
+  # base_url from them, and a mismatch between the two sources is the classic
+  # cause of "federation tester passes, clients break" — so if you change the
+  # apex documents, change these in the same commit.
   CONTINUWUITY_WELL_KNOWN__SERVER: matrix.kalitsune.net:443
   CONTINUWUITY_WELL_KNOWN__CLIENT: https://matrix.kalitsune.net
 

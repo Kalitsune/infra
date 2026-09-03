@@ -5,7 +5,8 @@ Rust with an embedded RocksDB. No external database, no worker processes.
 
 - Upstream: <https://forgejo.ellis.link/continuwuation/continuwuity>
 - Docs: <https://continuwuity.org/>
-- Server name: `matrix.kalitsune.net` — user IDs look like `@you:matrix.kalitsune.net`
+- Server name: `kalitsune.net` — user IDs look like `@you:kalitsune.net`
+- Actually served from: `matrix.kalitsune.net` (the apex delegates to it)
 
 ## Layout
 
@@ -25,34 +26,46 @@ becomes `CONTINUWUITY_WELL_KNOWN__SERVER`. Full option list:
 
 ### `server_name` is permanent
 
-`matrix.kalitsune.net` is baked into every event, room ID and user ID this
-server creates. **Changing it requires wiping the database.** It is not a
-hostname you can refactor later.
+`kalitsune.net` is baked into every event, room ID and user ID this server
+creates. **Changing it requires wiping the database.** It is not a hostname
+you can refactor later.
 
-It is not the bare apex `kalitsune.net` (which would give prettier
-`@you:kalitsune.net` IDs) because that would require serving
-`/.well-known/matrix/{server,client}` from `https://kalitsune.net/`, and that
-name resolves to Vercel — a host this cluster does not control.
+The apex was chosen for `@you:kalitsune.net` user IDs. The cost is that
+delegation **must be served from `https://kalitsune.net/`**, which resolves
+to Vercel (76.76.21.21) and is not this cluster — see below.
 
-### Federation runs on 443, not 8448
+### Federation runs on 443, not 8448 — and the apex must delegate
 
 Matrix's default federation port is 8448. Rather than add an 8448 listener to
 the shared `apps` Gateway (a change in `kubernetes/network/`, the blast-radius
-directory) and a second router port-forward, this server publishes
-`.well-known` delegation:
+directory) and a second router port-forward, this server uses `.well-known`
+delegation.
+
+Because `server_name` is the apex, **remote servers and clients resolve
+`kalitsune.net`, not `matrix.kalitsune.net`.** So the website project — not
+this repo — must serve:
 
 ```
-/.well-known/matrix/server  ->  {"m.server": "matrix.kalitsune.net:443"}
-/.well-known/matrix/client  ->  {"m.homeserver": {"base_url": "https://matrix.kalitsune.net"}}
+https://kalitsune.net/.well-known/matrix/server
+  {"m.server": "matrix.kalitsune.net:443"}
+
+https://kalitsune.net/.well-known/matrix/client
+  {"m.homeserver": {"base_url": "https://matrix.kalitsune.net"}}
 ```
 
-Continuwuity serves both documents itself, from the same hostname the
-delegation points at, so it is self-consistent and needs no second web server.
-Remote homeservers fetch the delegation and then talk to 443, which is already
-open and already terminated by Envoy.
+Both need `Content-Type: application/json` and CORS
+(`Access-Control-Allow-Origin: *`) on the client document — browser-based
+clients fetch it cross-origin and fail silently without it. A `308` to
+`www.` that lands on an HTML page (the current state) does **not** count:
+the response body must be the JSON above.
 
-Verify it from outside with the Matrix Federation Tester:
-<https://federationtester.matrix.org/#matrix.kalitsune.net>
+Continuwuity still serves its own copies at `matrix.kalitsune.net` from
+`CONTINUWUITY_WELL_KNOWN__*`. Nothing federating reads those anymore, but
+keep them identical to the apex's — a mismatch between the two is the classic
+cause of "federation tester passes, clients break".
+
+Verify from outside with the Matrix Federation Tester, against the **apex**:
+<https://federationtester.matrix.org/#kalitsune.net>
 
 ### It is on the apex domain on purpose
 
@@ -122,6 +135,12 @@ So the order is:
 
 2. Point a Matrix client (Element, Cinny, FluffyChat) at
    `https://matrix.kalitsune.net`, register, and supply that token.
+
+   Enter the server as `matrix.kalitsune.net` explicitly. Until the apex
+   serves the delegation documents, typing `kalitsune.net` will not resolve
+   — the client has no way to find the homeserver yet. Your user ID is
+   `@you:kalitsune.net` regardless of which address you connected through;
+   the ID comes from `server_name`, not from the host you typed.
 
 3. That first account is automatically made **server admin** and invited to
    the admin room, where `!admin` commands work.
