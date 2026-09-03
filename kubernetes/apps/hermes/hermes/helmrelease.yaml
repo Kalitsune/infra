@@ -144,8 +144,26 @@ spec:
                 filename="${f##*--}"
                 if [ "$filename" = "skills" ]; then
                   skills_dest="$dest/skills"
-                  rm -rf "$skills_dest"
+                  mkdir -p "$skills_dest"
                   touch "$dest/.no-bundled-skills"
+
+                  # Re-link the bundled skills listed in the ConfigMap, but
+                  # remove ONLY what this container created on a previous run:
+                  # the symlinks. The previous `rm -rf "$skills_dest"` also
+                  # destroyed agent-authored skills, which are real
+                  # directories here and exist in no ConfigMap, no image and
+                  # no git tree — so every `helm upgrade` silently deleted
+                  # them. It has already happened twice.
+                  #
+                  # Deleting links (never their targets) keeps this
+                  # idempotent while making the wipe impossible.
+                  find "$skills_dest" -type l -exec rm -f {} +
+                  # Clear directories the link removal left empty, so a
+                  # renamed/removed bundled category does not linger. -mindepth 1
+                  # protects $skills_dest itself; real skills keep their files
+                  # so they are never empty and never matched.
+                  find "$skills_dest" -mindepth 1 -type d -empty -delete
+
                   while IFS= read -r skill || [ -n "$skill" ]; do
                     [ -z "$skill" ] && continue
                     mkdir -p "$skills_dest/$(dirname "$skill")"

@@ -74,7 +74,38 @@ config:
 The `seed-profiles` init container (busybox) runs before Hermes starts on every deploy. For each profile it:
 
 1. Copies `SOUL.md` and `config.yaml` from the ConfigMap into the profile's directory on the PVC.
-2. If a `skills` file is present, wipes `<profile>/skills/`, writes `.no-bundled-skills` to suppress Hermes auto-seeding, then creates symlinks from the profile's skills directory into `/opt/hermes/skills/` (baked into the Hermes image). Symlinks mean no data duplication and skills stay in sync with image upgrades.
+2. If a `skills` file is present, writes `.no-bundled-skills` to suppress Hermes auto-seeding, removes the **symlinks** a previous run created, then re-links each listed skill into `/opt/hermes/skills/` (baked into the Hermes image). Symlinks mean no data duplication and skills stay in sync with image upgrades.
+
+### It must never `rm -rf` the skills directory
+
+Step 2 originally ran `rm -rf "$dest/skills"` before re-linking. That deleted
+**agent-authored skills too** — the ones the running agent writes with
+`skill_manage`, which are real directories on the PVC and exist in no
+ConfigMap, no image, and nowhere in this repo. Every `helm upgrade` silently
+destroyed them, and it happened twice before anyone noticed, because the init
+container still exits 0.
+
+The script now deletes only what it created (`find … -type l -delete`, plus
+empty leftover directories) and never the bundled targets. Two rules follow:
+
+- **Bundled skills are symlinks; agent-authored skills are real directories.**
+  Anything that cleans up must key on that distinction, not on "everything
+  that is not in the ConfigMap".
+- Agent-authored skills are **not backed up by this repo.** They live only on
+  the `data` PVC. Treat them as user data.
+
+Regression test — run it before changing that script:
+
+```sh
+kustomize build kubernetes/apps/hermes/hermes > /tmp/built.yaml
+uv run --with pyyaml python3 \
+  kubernetes/apps/hermes/hermes/test-skill-preservation.py /tmp/built.yaml
+```
+
+It seeds a sandbox with a real agent-authored skill plus stale symlinks and
+asserts the skill survives, the bundled links are rebuilt, and stale links are
+cleaned. The pre-fix script fails it; the current one passes. It is a test, not
+a manifest, so it is deliberately absent from `kustomization.yaml`.
 
 ## Chart upgrades: the immutable `volumeClaimTemplates` trap
 
