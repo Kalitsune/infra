@@ -124,12 +124,20 @@ So the order is:
 1. Read the bootstrap token from the log:
 
    ```bash
-   kubectl -n matrix logs continuwuity-0 | grep -A3 'Welcome to Continuwuity'
+   kubectl -n matrix logs continuwuity-0 \
+     | sed -E 's/\x1b\[[0-9;]*[A-Za-z]//g' \
+     | grep -m1 'using the registration token'
    ```
 
-   It is regenerated on every pod restart and never written to the database.
-   If it is ever captured somewhere it should not be (a log shipper, a pasted
-   terminal, an agent transcript), rotate it by bumping
+   The `sed` is not optional: the welcome banner is printed with ANSI colour
+   escapes even though `CONTINUWUITY_LOG_COLORS` is `false` (that setting
+   governs the tracing log lines, not the banner), and the raw token is
+   wrapped in them. Copying it straight out of the terminal picks up
+   invisible `ESC[;` bytes and the token is then rejected.
+
+   It is regenerated on every pod restart and never written to the
+   database. If it is ever captured somewhere it should not be (a log
+   shipper, a pasted terminal, an agent transcript), rotate it by bumping
    `kalitsune.net/bootstrap-token-generation` in `statefulset.yaml` and
    pushing — the restart invalidates the old one permanently.
 
@@ -179,14 +187,79 @@ RocksDB backup engine — set `CONTINUWUITY_DATABASE_BACKUP_PATH` and
 ## Optional: OIDC via Pocket ID
 
 Continuwuity supports delegated authentication against an OIDC provider
-(`[global.oauth.oidc]`, i.e. `CONTINUWUITY_OAUTH__OIDC__*`), which would let
+(`[global.oauth.oidc]`, i.e. `CONTINUWUITY_OAUTH__OIDC__*`), which lets
 accounts come from `id.kalitsune.net` instead of local passwords.
 
-**Not enabled**, and the reason matters: when delegated auth is active
-Continuwuity behaves as if `compatibility_mode = "exclusive"`, and **any Matrix
-client that does not support next-gen OAuth login can no longer sign in.**
-Client support is still patchy, so this trades away working clients. Revisit
-once your preferred client supports it.
+**Staged but NOT enabled.** The encrypted client secret
+(`oidc-secret.yaml`) and the commented config keys are in place; the final
+switch is deliberately left to a human. Read all of this first.
+
+### The two things that make this irreversible-ish
+
+1. **Legacy login dies.** With delegated auth active Continuwuity behaves as
+   if `compatibility_mode = "exclusive"`. Only clients implementing next-gen
+   OAuth login (MSC3861) can sign in. Element and **Element X** do. Cinny,
+   FluffyChat and Nheko generally do not.
+2. **Legacy registration dies too — including the first-run bootstrap
+   token.** So **the first account must already exist** before this lands.
+   Enable OIDC on a server with zero accounts and there is no way to create
+   one and no server admin.
+
+### Order of operations
+
+1. **Register your account first** (see [First run](#first-run)). Confirm it
+   exists and is admin. Do not skip this.
+2. Create the OIDC client in Pocket ID at <https://id.kalitsune.net>:
+   - Name: `Continuwuity`
+   - Callback / redirect URI:
+     `https://matrix.kalitsune.net/_continuwuity/oidc/complete`
+     (the client-facing host, **not** the `server_name`)
+   - Scope `openid` must be permitted; `profile`/`email` are useful extras.
+   - Note the generated **client ID** and **client secret**.
+3. Put the client secret into the encrypted file:
+   ```sh
+   sops kubernetes/apps/matrix/continuwuity/oidc-secret.yaml
+   # replace REPLACE_WITH_POCKET_ID_CLIENT_SECRET
+   ```
+4. In `configmap.yaml`, uncomment `CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL`
+   and `CONTINUWUITY_OAUTH__OIDC__CLIENT_ID`, setting the client ID to
+   whatever Pocket ID issued.
+5. In `statefulset.yaml`, add the secret to `envFrom` **in the same commit**:
+   ```yaml
+   - secretRef:
+       name: continuwuity-oidc
+   ```
+   Steps 4 and 5 must ship together. Continuwuity builds its config from the
+   env var names, so mounting `CONTINUWUITY_OAUTH__OIDC__CLIENT_SECRET`
+   alone creates an `oauth.oidc` section with no `discovery_url` and no
+   `client_id`. A partially-populated section is not the same as an absent
+   one and can fail config parsing at startup — on a StatefulSet that means
+   the pod never becomes ready.
+6. Push, then **log out and back in**. The client opens a browser page with
+   the Continuwuity logo, which hands off to Pocket ID. On first OIDC login
+   you are asked to choose a user ID — **enter your existing user ID and then
+   its old password** to link the accounts rather than creating a second one.
+
+Discovery was verified against the live IdP:
+
+```console
+$ curl -s https://id.kalitsune.net/.well-known/openid-configuration
+issuer: https://id.kalitsune.net
+authorization_endpoint: https://id.kalitsune.net/authorize
+token_endpoint: https://id.kalitsune.net/api/oidc/token
+scopes: openid, profile, email, groups, offline_access
+code_challenge_methods: plain, S256
+```
+
+`discovery_url` takes the **base** URL; Continuwuity appends
+`/.well-known/openid-configuration` itself.
+
+### Rolling it back
+
+Comment the two config keys out again, drop the `envFrom` entry, and push.
+Legacy login returns. Accounts created *through* the IdP keep working only
+if they have a local password set, so link an existing account rather than
+registering a fresh one through OIDC if you want a way back.
 
 ## Troubleshooting
 

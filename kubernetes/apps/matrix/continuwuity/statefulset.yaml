@@ -111,6 +111,18 @@ spec:
                 name: continuwuity-config
             - secretRef:
                 name: continuwuity-secrets
+            # DO NOT add `- secretRef: {name: continuwuity-oidc}` here until
+            # the CONTINUWUITY_OAUTH__OIDC__* keys in configmap.yaml are
+            # uncommented in the SAME commit.
+            #
+            # Continuwuity builds its config table from the env var names, so
+            # CONTINUWUITY_OAUTH__OIDC__CLIENT_SECRET on its own would create
+            # an `oauth.oidc` section containing only a client secret, with no
+            # discovery_url and no client_id. A partially-populated section is
+            # not the same as an absent one and can fail config parsing at
+            # startup — which on a StatefulSet means the pod never becomes
+            # ready. The secret is created by kustomization.yaml so it is
+            # ready to consume, but it stays unmounted until it is complete.
           ports:
             - name: http
               containerPort: 8008

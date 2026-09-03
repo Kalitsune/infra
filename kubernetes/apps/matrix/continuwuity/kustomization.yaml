@@ -4,5 +4,9 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - secret.yaml
+  # Client secret for OIDC delegation. Listed so it exists in the cluster
+  # ahead of time; the StatefulSet does not consume it until the
+  # CONTINUWUITY_OAUTH__OIDC__* keys in configmap.yaml are uncommented.
+  - oidc-secret.yaml
   - statefulset.yaml
   - httproute.yaml

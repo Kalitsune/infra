@@ -109,6 +109,40 @@ data:
   # server admin and invited to the admin room.
   CONTINUWUITY_ALLOW_REGISTRATION: "true"
 
+  # ------------------------------------------------------ delegated auth
+  #
+  # OIDC delegation to Pocket ID (id.kalitsune.net). Accounts come from the
+  # IdP instead of local passwords.
+  #
+  # READ THIS BEFORE ENABLING. Turning these on makes Continuwuity behave as
+  # if `oauth.compatibility_mode = "exclusive"`, which:
+  #
+  #   1. DISABLES LEGACY LOGIN. Any Matrix client that does not implement
+  #      next-gen OAuth login (MSC3861) can no longer sign in at all. Element
+  #      and Element X do; Cinny, FluffyChat and Nheko generally do not.
+  #   2. DISABLES LEGACY REGISTRATION, including the first-run bootstrap
+  #      token. So the FIRST ACCOUNT MUST ALREADY EXIST before this lands,
+  #      or there is no way to create one and no server admin.
+  #
+  # `discovery_url` is the IdP base; Continuwuity appends
+  # /.well-known/openid-configuration itself. Verified present:
+  #   curl https://id.kalitsune.net/.well-known/openid-configuration
+  #   -> issuer https://id.kalitsune.net, S256 PKCE, scopes incl. openid
+  #
+  # The matching redirect URI to register in Pocket ID is
+  #   https://matrix.kalitsune.net/_continuwuity/oidc/complete
+  # which is served from the client-facing host, not the server_name.
+  #
+  # The client secret is NOT here — it lives in oidc-secret.yaml (SOPS).
+  #
+  # CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL: https://id.kalitsune.net
+  # CONTINUWUITY_OAUTH__OIDC__CLIENT_ID: continuwuity
+  #
+  # Keep prompt_for_localpart at its default (true) for the first login so
+  # the existing local account can be linked by entering its user ID; only
+  # set it false, with preferred_username_claim, once linking is done.
+  # CONTINUWUITY_OAUTH__OIDC__PROMPT_FOR_LOCALPART: "true"
+
   # ---------------------------------------------------------------- privacy
   # Do not advertise this server's room directory to the wider federation,
   # and keep the built-in web pages out of search engines. Both are the
