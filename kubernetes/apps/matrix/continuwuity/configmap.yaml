@@ -114,34 +114,38 @@ data:
   # OIDC delegation to Pocket ID (id.kalitsune.net). Accounts come from the
   # IdP instead of local passwords.
   #
-  # READ THIS BEFORE ENABLING. Turning these on makes Continuwuity behave as
-  # if `oauth.compatibility_mode = "exclusive"`, which:
+  # ACTIVE. Enabling this makes Continuwuity behave as if
+  # `oauth.compatibility_mode = "exclusive"`, which means:
   #
-  #   1. DISABLES LEGACY LOGIN. Any Matrix client that does not implement
-  #      next-gen OAuth login (MSC3861) can no longer sign in at all. Element
-  #      and Element X do; Cinny, FluffyChat and Nheko generally do not.
-  #   2. DISABLES LEGACY REGISTRATION, including the first-run bootstrap
-  #      token. So the FIRST ACCOUNT MUST ALREADY EXIST before this lands,
-  #      or there is no way to create one and no server admin.
+  #   1. LEGACY LOGIN IS DISABLED. Any Matrix client that does not implement
+  #      next-gen OAuth login (MSC3861) can no longer sign in. Element and
+  #      Element X do; Cinny, FluffyChat and Nheko generally do not.
+  #   2. LEGACY REGISTRATION IS DISABLED, including the first-run bootstrap
+  #      token. Safe here only because @maple:kalitsune.net already exists
+  #      and is server admin — verified before this was enabled. Never turn
+  #      this on against a server with zero accounts: there would be no way
+  #      to create the first one.
   #
-  # `discovery_url` is the IdP base; Continuwuity appends
-  # /.well-known/openid-configuration itself. Verified present:
-  #   curl https://id.kalitsune.net/.well-known/openid-configuration
-  #   -> issuer https://id.kalitsune.net, S256 PKCE, scopes incl. openid
+  # `discovery_url` is the IdP BASE; Continuwuity appends
+  # /.well-known/openid-configuration itself. Verified live:
+  #   issuer https://id.kalitsune.net, S256 PKCE, scopes include openid.
   #
-  # The matching redirect URI to register in Pocket ID is
+  # The redirect URI registered in Pocket ID is
   #   https://matrix.kalitsune.net/_continuwuity/oidc/complete
-  # which is served from the client-facing host, not the server_name.
+  # i.e. the host clients actually reach, NOT the server_name (kalitsune.net).
+  # Those differ here, and using the server_name would break the callback.
   #
-  # The client secret is NOT here — it lives in oidc-secret.yaml (SOPS).
-  #
-  # CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL: https://id.kalitsune.net
-  # CONTINUWUITY_OAUTH__OIDC__CLIENT_ID: continuwuity
-  #
-  # Keep prompt_for_localpart at its default (true) for the first login so
-  # the existing local account can be linked by entering its user ID; only
-  # set it false, with preferred_username_claim, once linking is done.
-  # CONTINUWUITY_OAUTH__OIDC__PROMPT_FOR_LOCALPART: "true"
+  # The client secret is NOT here — it is in oidc-secret.yaml (SOPS) and is
+  # mounted via envFrom in statefulset.yaml. All three must stay in sync.
+  CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL: https://id.kalitsune.net
+  CONTINUWUITY_OAUTH__OIDC__CLIENT_ID: 7a5bd443-7346-4bd4-8f75-dd0f2705e137
+
+  # Left at the default (true) deliberately. On first OIDC sign-in the user
+  # is asked which localpart to use, which is how an existing local account
+  # (@maple:kalitsune.net) gets LINKED instead of a second shadow account
+  # being created. Only set this false, with preferred_username_claim, once
+  # linking is done and you want new users named from the IdP claim.
+  CONTINUWUITY_OAUTH__OIDC__PROMPT_FOR_LOCALPART: "true"
 
   # ---------------------------------------------------------------- privacy
   # Do not advertise this server's room directory to the wider federation,

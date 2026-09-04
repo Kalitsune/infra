@@ -184,82 +184,81 @@ RocksDB backup engine — set `CONTINUWUITY_DATABASE_BACKUP_PATH` and
 `!admin server backup-database`. Not configured yet; see
 <https://continuwuity.org/maintenance.html#backups>.
 
-## Optional: OIDC via Pocket ID
+## OIDC via Pocket ID — ACTIVE
 
-Continuwuity supports delegated authentication against an OIDC provider
-(`[global.oauth.oidc]`, i.e. `CONTINUWUITY_OAUTH__OIDC__*`), which lets
-accounts come from `id.kalitsune.net` instead of local passwords.
+Delegated authentication against `id.kalitsune.net`
+(`[global.oauth.oidc]`, i.e. `CONTINUWUITY_OAUTH__OIDC__*`). Accounts come
+from the IdP instead of local passwords.
 
-**Staged but NOT enabled.** The encrypted client secret
-(`oidc-secret.yaml`) and the commented config keys are in place; the final
-switch is deliberately left to a human. Read all of this first.
+### What this changed, and what it cost
 
-### The two things that make this irreversible-ish
+With delegated auth active Continuwuity behaves as if
+`compatibility_mode = "exclusive"`:
 
-1. **Legacy login dies.** With delegated auth active Continuwuity behaves as
-   if `compatibility_mode = "exclusive"`. Only clients implementing next-gen
-   OAuth login (MSC3861) can sign in. Element and **Element X** do. Cinny,
-   FluffyChat and Nheko generally do not.
-2. **Legacy registration dies too — including the first-run bootstrap
-   token.** So **the first account must already exist** before this lands.
-   Enable OIDC on a server with zero accounts and there is no way to create
-   one and no server admin.
+- **Only OAuth-capable clients can sign in.** Element and **Element X** (the
+  client in use here) implement next-gen OAuth login. Cinny, FluffyChat and
+  Nheko generally do not, and will fail with a login error. That is a client
+  limitation, not a server fault.
+- **Legacy registration is disabled**, including the first-run bootstrap
+  token. `CONTINUWUITY_REGISTRATION_TOKEN` in `secret.yaml` no longer does
+  anything for new signups; users come from Pocket ID.
 
-### Order of operations
+This was only safe to enable because `@maple:kalitsune.net` already existed
+and was server admin. **Never enable OIDC on a server with zero accounts** —
+legacy registration is the only way to create the first one, and turning
+this on removes it, leaving no admin and no path to create one.
 
-1. **Register your account first** (see [First run](#first-run)). Confirm it
-   exists and is admin. Do not skip this.
-2. Create the OIDC client in Pocket ID at <https://id.kalitsune.net>:
-   - Name: `Continuwuity`
-   - Callback / redirect URI:
-     `https://matrix.kalitsune.net/_continuwuity/oidc/complete`
-     (the client-facing host, **not** the `server_name`)
-   - Scope `openid` must be permitted; `profile`/`email` are useful extras.
-   - Note the generated **client ID** and **client secret**.
-3. Put the client secret into the encrypted file:
-   ```sh
-   sops kubernetes/apps/matrix/continuwuity/oidc-secret.yaml
-   # replace REPLACE_WITH_POCKET_ID_CLIENT_SECRET
-   ```
-4. In `configmap.yaml`, uncomment `CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL`
-   and `CONTINUWUITY_OAUTH__OIDC__CLIENT_ID`, setting the client ID to
-   whatever Pocket ID issued.
-5. In `statefulset.yaml`, add the secret to `envFrom` **in the same commit**:
-   ```yaml
-   - secretRef:
-       name: continuwuity-oidc
-   ```
-   Steps 4 and 5 must ship together. Continuwuity builds its config from the
-   env var names, so mounting `CONTINUWUITY_OAUTH__OIDC__CLIENT_SECRET`
-   alone creates an `oauth.oidc` section with no `discovery_url` and no
-   `client_id`. A partially-populated section is not the same as an absent
-   one and can fail config parsing at startup — on a StatefulSet that means
-   the pod never becomes ready.
-6. Push, then **log out and back in**. The client opens a browser page with
-   the Continuwuity logo, which hands off to Pocket ID. On first OIDC login
-   you are asked to choose a user ID — **enter your existing user ID and then
-   its old password** to link the accounts rather than creating a second one.
+### The wiring
 
-Discovery was verified against the live IdP:
+| Piece | Where |
+| --- | --- |
+| `discovery_url`, `client_id` | `configmap.yaml` |
+| `client_secret` | `oidc-secret.yaml` (SOPS-encrypted) |
+| secret mounted into the pod | `envFrom` in `statefulset.yaml` |
 
-```console
-$ curl -s https://id.kalitsune.net/.well-known/openid-configuration
-issuer: https://id.kalitsune.net
-authorization_endpoint: https://id.kalitsune.net/authorize
-token_endpoint: https://id.kalitsune.net/api/oidc/token
-scopes: openid, profile, email, groups, offline_access
-code_challenge_methods: plain, S256
+All three must change together. Continuwuity builds its config from env var
+**names**, so mounting the secret without `discovery_url`/`client_id` creates
+a partial `oauth.oidc` section — not an absent one — which can fail config
+parsing at startup.
+
+The redirect URI registered in Pocket ID is:
+
+```
+https://matrix.kalitsune.net/_continuwuity/oidc/complete
 ```
 
-`discovery_url` takes the **base** URL; Continuwuity appends
-`/.well-known/openid-configuration` itself.
+Note this is the **host clients reach**, not the `server_name`. Those differ
+here (`server_name` is the apex `kalitsune.net`), and using the server_name
+would break the callback.
+
+`discovery_url` takes the **base** URL — Continuwuity appends
+`/.well-known/openid-configuration` itself. Verified against the live IdP:
+issuer `https://id.kalitsune.net`, S256 PKCE, scopes include `openid`.
+
+### Linking an existing account
+
+`prompt_for_localpart` is left at its default `true`. On first OIDC sign-in
+you are asked which user ID to use — **enter the existing one
+(`@maple:kalitsune.net`) and then its old password** to link the accounts.
+Skipping that creates a second, separate shadow account.
 
 ### Rolling it back
 
-Comment the two config keys out again, drop the `envFrom` entry, and push.
-Legacy login returns. Accounts created *through* the IdP keep working only
-if they have a local password set, so link an existing account rather than
-registering a fresh one through OIDC if you want a way back.
+Comment out the two `CONTINUWUITY_OAUTH__OIDC__*` keys in `configmap.yaml`,
+remove the `continuwuity-oidc` entry from `envFrom` in `statefulset.yaml`,
+bump `kalitsune.net/config-generation`, and push. Legacy password login
+returns. Accounts that only ever existed via the IdP have no local password,
+so keep one password-capable admin account as a way back in.
+
+### Rotating the client secret
+
+```sh
+sops kubernetes/apps/matrix/continuwuity/oidc-secret.yaml
+```
+
+Then bump `kalitsune.net/config-generation` in `statefulset.yaml` in the same
+commit — a Secret consumed through `envFrom` is read once at container start,
+so editing it alone does not restart the pod.
 
 ## Troubleshooting
 

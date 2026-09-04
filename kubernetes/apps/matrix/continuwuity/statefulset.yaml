@@ -57,8 +57,8 @@ spec:
         # This annotation IS part of the pod template, so bumping it in the
         # same commit as a config edit is what actually applies that edit.
         #
-        # generation 2: server_name changed to the apex, kalitsune.net.
-        kalitsune.net/config-generation: "2"
+        # generation 3: OIDC delegation to Pocket ID enabled.
+        kalitsune.net/config-generation: "3"
       labels:
         app.kubernetes.io/name: continuwuity
     spec:
@@ -111,18 +111,16 @@ spec:
                 name: continuwuity-config
             - secretRef:
                 name: continuwuity-secrets
-            # DO NOT add `- secretRef: {name: continuwuity-oidc}` here until
-            # the CONTINUWUITY_OAUTH__OIDC__* keys in configmap.yaml are
-            # uncommented in the SAME commit.
+            # OIDC client secret for delegated auth against Pocket ID.
             #
-            # Continuwuity builds its config table from the env var names, so
-            # CONTINUWUITY_OAUTH__OIDC__CLIENT_SECRET on its own would create
-            # an `oauth.oidc` section containing only a client secret, with no
-            # discovery_url and no client_id. A partially-populated section is
-            # not the same as an absent one and can fail config parsing at
-            # startup — which on a StatefulSet means the pod never becomes
-            # ready. The secret is created by kustomization.yaml so it is
-            # ready to consume, but it stays unmounted until it is complete.
+            # This must ship in the SAME commit as the
+            # CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL / __CLIENT_ID keys in
+            # configmap.yaml. Continuwuity builds its config table from env
+            # var NAMES, so this secret alone would create an `oauth.oidc`
+            # section holding only a client secret — a partial section, not
+            # an absent one, which can fail config parsing at startup.
+            - secretRef:
+                name: continuwuity-oidc
           ports:
             - name: http
               containerPort: 8008
