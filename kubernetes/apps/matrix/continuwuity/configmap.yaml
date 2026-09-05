@@ -138,7 +138,6 @@ data:
   # The client secret is NOT here — it is in oidc-secret.yaml (SOPS) and is
   # mounted via envFrom in statefulset.yaml. All three must stay in sync.
   CONTINUWUITY_OAUTH__OIDC__DISCOVERY_URL: https://id.kalitsune.net
-  CONTINUWUITY_OAUTH__OIDC__CLIENT_ID: 7a5bd443-7346-4bd4-8f75-dd0f2705e137
 
   # Left at the default (true) deliberately. On first OIDC sign-in the user
   # is asked which localpart to use, which is how an existing local account
