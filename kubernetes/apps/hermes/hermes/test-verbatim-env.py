@@ -66,6 +66,12 @@ VERBATIM_FILES = {
     "MATRIX_HOMESERVER": "https://matrix.kalitsune.net",
     "MATRIX_ALLOWED_USERS": "@maple:kalitsune.net",
     "MATRIX_REQUIRE_MENTION": "true",
+    # E2EE. Without this the adapter defaults to mode "off", receives
+    # undecryptable m.room.encrypted events in encrypted rooms, and drops
+    # them before the gateway ever sees an inbound message — the bot looks
+    # like it is ignoring @mentions.
+    "MATRIX_E2EE_MODE": "required",
+    "MATRIX_DEVICE_ID": "BC91u0NjlW",
     # LLM provider credential. Must reach the profile .env or the agent
     # cannot talk to Anthropic at all under multiplexing:
     #   WARNING gateway.run: Primary provider auth failed: No Anthropic
