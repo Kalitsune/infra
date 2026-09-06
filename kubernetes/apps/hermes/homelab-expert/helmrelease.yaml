@@ -226,24 +226,6 @@ spec:
       - name: hermes-managed
         configMap:
           name: hermes-managed
-      # ONE-SHOT MIGRATION MOUNT — safe to delete once the new pod is up.
-      #
-      # The old shared volume, mounted READ-ONLY and ONLY into the
-      # seed-agent-home init container below. The agent container does NOT
-      # mount it (init containers carry their own volumeMounts), so the
-      # process that could be prompt-injected has no path to it. The init
-      # script is fixed content from git, not agent-controlled.
-      #
-      # This is the only way to move 12 MB of state (11 MB state.db alone) —
-      # far past the 1 MB ConfigMap ceiling. The claim is ReadWriteMany, so
-      # mounting it here does not disturb the running pod.
-      #
-      # After the migration marker exists, this block and its volumeMount are
-      # dead weight: remove them in a follow-up commit.
-      - name: migration-old-volume
-        persistentVolumeClaim:
-          claimName: data-hermes-hermes-agent-0
-          readOnly: true
 
     extraVolumeMounts:
       - name: hermes-managed
@@ -328,41 +310,6 @@ spec:
             chmod 600 /opt/data/honcho.json
             echo "seeded honcho.json"
 
-            # ORDER MATTERS: migrate BEFORE linking bundled skills.
-            #
-            # The migration copies whole directories and refuses to overwrite
-            # an existing destination. Linking runs first would create
-            # /opt/data/skills, so the `skills` entry would be skipped and
-            # every agent-authored skill silently lost -- the exact class of
-            # bug that destroyed authored skills twice in the old setup.
-            # Caught by bin/test-split-init.py before this ever shipped.
-            #
-            # One-shot migration of this agent's own state off the shared
-            # volume: skills it authored (which exist in no image and no git
-            # tree), memories, and session history.
-            #
-            # Guarded by a marker file so it runs exactly once, and every copy
-            # is skipped when the destination already exists -- so a re-run can
-            # never clobber live state. The source is mounted read-only.
-            marker=/opt/data/.migrated-from-shared-volume
-            src=/migration/profiles/infra-expert
-            if [ ! -f "$marker" ] && [ -d "$src" ]; then
-              echo "migrating profile state from the shared volume"
-              for item in skills memories sessions state.db SOUL.md \
-                          matrix_threads.json auth.json honcho.json; do
-                if [ -e "$src/$item" ] && [ ! -e "/opt/data/$item" ]; then
-                  cp -a "$src/$item" /opt/data/
-                  echo "  migrated $item"
-                else
-                  echo "  skipped $item (absent at source or already present)"
-                fi
-              done
-              touch "$marker"
-              echo "migration complete"
-            else
-              echo "migration already done or source absent — skipping"
-            fi
-
             # Clear the old `.no-bundled-skills` marker so all image-bundled
             # skills load automatically. The marker was written by the previous
             # init container that managed a curated symlink list; removing it
@@ -377,9 +324,6 @@ spec:
             readOnly: true
           - name: honcho-client-secrets
             mountPath: /honcho-client-secrets
-            readOnly: true
-          - name: migration-old-volume
-            mountPath: /migration
             readOnly: true
 
     service:
