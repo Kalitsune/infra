@@ -107,6 +107,83 @@ asserts the skill survives, the bundled links are rebuilt, and stale links are
 cleaned. The pre-fix script fails it; the current one passes. It is a test, not
 a manifest, so it is deliberately absent from `kustomization.yaml`.
 
+## Resources: why they are set here, not left to the chart
+
+The agent was **OOMKilled (exit 137)** on 2026-09-06 after ~3 days of uptime,
+on the chart defaults (`requests 256Mi` / `limits 2Gi`).
+
+It was **not** node exhaustion, which is the intuitive but wrong reading:
+
+```console
+$ kubectl get node talos-192-168-1-171 -o jsonpath='{.status.conditions}'
+MemoryPressure=False (KubeletHasSufficientMemory)
+
+$ free -m          # the NODE, not this pod
+              total        used   buff/cache   available
+Mem:          15970        4604        10668        11365
+```
+
+**`free` inside a container shows the host, not your cgroup** — that is the
+trap. Seeing "4 GB used, 10 GB cache" and concluding the kernel sacrificed a
+process to protect page cache is backwards: page cache is reclaimable, and the
+kernel drops it under pressure rather than killing anything. Those 10 GB were
+never the constraint.
+
+The kill came from **this container's own cgroup**, which is the only limit
+that applied:
+
+```console
+$ cat /sys/fs/cgroup/memory.max        # 2Gi, the chart default
+2147483648
+$ cat /sys/fs/cgroup/memory.current    # steady state, post-restart
+1157173248                             # ~1.15 GiB
+$ grep -E '^(anon|file) ' /sys/fs/cgroup/memory.stat
+anon 969232384                         # ~970 MiB genuinely resident
+file 123207680
+```
+
+A ~1.15 GiB floor under a 2 GiB ceiling leaves very little headroom — roughly
+one large context window. So `limits` go to **4Gi**.
+
+### `requests` were the other half of the bug
+
+The chart requested `256Mi` while the pod actually needs >1 GiB. For a
+Burstable pod the kubelet derives
+
+```
+oom_score_adj = 1000 - 1000 * (request / node_allocatable)
+```
+
+so an understated request makes the pod the node's **preferred OOM victim**:
+
+```console
+$ cat /proc/206/oom_score_adj
+984                                    # near the 1000 maximum
+```
+
+Raising the request to `1Gi` brings that to ~934 and makes scheduling honest.
+Node memory requests move ~3.5 → ~4.2 GiB of 15.1 GiB allocatable, so there is
+ample room; limits were already overcommitted at 112%, which is normal and
+only bites under genuine node pressure.
+
+**Do not "fix" the request back down to match idle usage.** It is deliberately
+close to the real floor, and lowering it re-arms the same failure.
+
+### Checking this later
+
+```sh
+kubectl -n hermes get pod hermes-hermes-agent-0 \
+  -o jsonpath='{.status.containerStatuses[0].lastState}'   # reason: OOMKilled
+kubectl exec -n hermes hermes-hermes-agent-0 -- cat /sys/fs/cgroup/memory.peak
+kubectl exec -n hermes hermes-hermes-agent-0 -- cat /sys/fs/cgroup/memory.events
+```
+
+`memory.events` is ground truth: a nonzero `oom_kill` counter means this
+cgroup hit its own ceiling. The counter resets with the container, so read it
+before restarting anything. Note the CPU limit of 2 cores comes from the
+chart and is intentionally left alone — Helm deep-merges, and only `memory` is
+overridden.
+
 ## Chart upgrades: the immutable `volumeClaimTemplates` trap
 
 `spec.chart.spec.version` is a range (`>=1.11.0 <2.0.0`), so a new chart

@@ -308,6 +308,39 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         securityContext: {}
+    # Sized from observation, not from the chart defaults (256Mi / 2Gi).
+    #
+    # The agent was OOMKilled (exit 137) on 2026-09-06 after ~3 days of
+    # uptime. It was NOT a node problem: the node reported
+    # MemoryPressure=False with ~11 GiB available at the time. The kill came
+    # from this container's own cgroup hitting memory.max = 2Gi.
+    #
+    # Measured steady state shortly after a restart: memory.current ~1.15 GiB,
+    # of which anon ~970 MiB (python3 ~340 MiB + two hermes procs ~540 MiB +
+    # node ~250 MiB). So the floor is already >1 GiB and the old 2Gi cap left
+    # roughly one context-window's worth of headroom before death.
+    #
+    # requests matter as much as limits here. The chart's 256Mi request put
+    # this pod at oom_score_adj=984 — Kubernetes derives that for Burstable
+    # pods as 1000 - 1000*request/nodeCapacity, so a request far below real
+    # usage makes the pod the node's preferred OOM victim under any pressure.
+    # Requesting ~1Gi (close to the true floor) drops it to ~934 and makes
+    # scheduling honest, at the cost of reserving memory the pod genuinely
+    # needs. Node requests go ~3.5 -> ~4.2 GiB of 15.1 GiB allocatable.
+    #
+    # The chart's CPU limit of 2 cores is deliberately left in place. Only
+    # `memory` is overridden below, and Helm deep-merges values, so
+    # limits.cpu: "2" from the chart survives — verified in the rendered
+    # StatefulSet. That is fine: 2 cores on an otherwise idle worker is not a
+    # meaningful constraint for this workload, and the failure being fixed
+    # here is memory, not CPU.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+
     env:
       OPENAI_API_KEY: ""
 
