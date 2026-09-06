@@ -102,10 +102,41 @@ spec:
       overwrite: false
 
     soul:
-      textFrom:
-        configMapKeyRef:
-          name: homelab-expert-soul
-          key: SOUL.md
+      text: |
+        # Identity
+
+        You are the homelab Kubernetes expert for kalitsune's infrastructure.
+        Single mandate: deploy, maintain, and diagnose services via GitOps — never by touching the cluster directly.
+
+        Read `AGENT.md` at the repository root before acting. It is the authoritative operating manual: infrastructure details, golden rules, toolchain, conventions, storage, networking, verification procedure, and when to stop and ask. Do not rely on memory for anything it covers. When the repository is not yet checked out, clone it first.
+
+        # Session secrets
+
+        All secrets are injected as **base64-encoded** environment variables from the profile `.env`. Always decode before use: `echo "$VAR" | base64 -d`.
+
+        - `GIT_SSH_KEY` — base64-encoded ed25519 deploy key for the infra repo.
+          ```sh
+          echo "$GIT_SSH_KEY" | base64 -d > /tmp/id_infra && chmod 600 /tmp/id_infra
+          export GIT_SSH_COMMAND="ssh -i /tmp/id_infra -o StrictHostKeyChecking=no"
+          ```
+        - `KUBECONFIG` — base64-encoded kubectl config granting cluster access.
+          ```sh
+          echo "$KUBECONFIG" | base64 -d > /tmp/kubeconfig
+          export KUBECONFIG=/tmp/kubeconfig
+          ```
+        - `INFRA_REPO` — base64-encoded URL of the infra git repository.
+          ```sh
+          REPO=$(echo "$INFRA_REPO" | base64 -d)
+          ```
+
+        # Runtime environment
+
+        You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into the bin folder (`~/.local/bin`), `chmod +x` it. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
+
+        # Style
+
+        Terse, technically precise. Report failures with the exact command and exact error.
+        State "verified to layer N, could not check layer N+1" rather than claiming full success.
 
     controller:
       type: statefulset
@@ -148,6 +179,25 @@ spec:
       - name: MATRIX_SESSION_SCOPE
         value: "room"
 
+      - name: HERMES_DASHBOARD
+        value: "1"
+      - name: HERMES_DASHBOARD_HOST
+        value: "127.0.0.1"
+      - name: HERMES_DASHBOARD_PUBLIC_URL
+        value: "https://homelab-expert.hermes.kalitsune.net"
+      - name: HERMES_DASHBOARD_OIDC_ISSUER
+        value: "https://id.kalitsune.net"
+      - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
+        valueFrom:
+          secretKeyRef:
+            name: oauth2-proxy-secret
+            key: clientId
+      - name: HERMES_DASHBOARD_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: oauth2-proxy-secret
+            key: clientSecret
+
     # Credentials. Both Secrets are mounted ONLY into this release — that is
     # the whole point of the split.
     #
@@ -176,9 +226,6 @@ spec:
       - name: hermes-managed
         configMap:
           name: hermes-managed
-      - name: bundled-skills
-        configMap:
-          name: homelab-expert-bundled-skills
       # ONE-SHOT MIGRATION MOUNT — safe to delete once the new pod is up.
       #
       # The old shared volume, mounted READ-ONLY and ONLY into the
@@ -316,36 +363,12 @@ spec:
               echo "migration already done or source absent — skipping"
             fi
 
-            # Bundled-skill selection.
-            #
-            # The previous setup wrote a `.no-bundled-skills` marker and then
-            # symlinked back only the skills named in a curated list, so the
-            # agent loaded 10 bundled skills rather than everything shipped in
-            # the image. Reproduce that here, or the skill set silently
-            # changes on migration.
-            #
-            # Bundled skills are symlinks into /opt/hermes/skills; the agent's
-            # own authored skills are real directories, migrated above. Only
-            # symlinks are cleared on each run, so re-linking can never touch
-            # authored content — the `rm -rf` that destroyed authored skills
-            # twice in the old setup is deliberately not used here.
-            skills_dest=/opt/data/skills
-            mkdir -p "$skills_dest"
-            touch /opt/data/.no-bundled-skills
-            find "$skills_dest" -type l -exec rm -f {} +
-            find "$skills_dest" -mindepth 1 -type d -empty -delete
-            while IFS= read -r skill || [ -n "$skill" ]; do
-              [ -z "$skill" ] && continue
-              # No existence check on the target: this init container is
-              # busybox and has no /opt/hermes, so testing the path would skip
-              # every skill. The symlink is deliberately dangling here and
-              # resolves in the agent container, which does have the image's
-              # skill tree. This mirrors the previous working setup.
-              mkdir -p "$skills_dest/$(dirname "$skill")"
-              ln -sfn "/opt/hermes/skills/$skill" \
-                "$skills_dest/$(dirname "$skill")/$(basename "$skill")"
-            done < /bundled-skills/skills
-            echo "linked bundled skills"
+            # Clear the old `.no-bundled-skills` marker so all image-bundled
+            # skills load automatically. The marker was written by the previous
+            # init container that managed a curated symlink list; removing it
+            # lets Hermes merge the agent home and the image skill tree.
+            rm -f /opt/data/.no-bundled-skills
+            echo "cleared .no-bundled-skills (all bundled skills enabled)"
         volumeMounts:
           - name: data
             mountPath: /opt/data
@@ -355,12 +378,63 @@ spec:
           - name: honcho-client-secrets
             mountPath: /honcho-client-secrets
             readOnly: true
-          - name: bundled-skills
-            mountPath: /bundled-skills
-            readOnly: true
           - name: migration-old-volume
             mountPath: /migration
             readOnly: true
+
+    service:
+      enabled: true
+      ports:
+        - name: oauth2-proxy
+          port: 4180
+          targetPort: 4180
+
+    extraContainers:
+      - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+        args:
+          - --provider=oidc
+          - --oidc-issuer-url=https://id.kalitsune.net
+          - --redirect-url=https://homelab-expert.hermes.kalitsune.net/oauth2/callback
+          - --upstream=http://127.0.0.1:9119
+          - --http-address=0.0.0.0:4180
+          - --email-domain=*
+          - --cookie-secure=true
+          - --cookie-name=_oauth2_proxy_homelab_expert
+          - --session-store-type=cookie
+          - --banner="-"
+          - --skip-provider-button=true
+          - --code-challenge-method=S256
+        env:
+          - name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: clientId
+          - name: OAUTH2_PROXY_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: clientSecret
+          - name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: cookieSecret
+        ports:
+          - name: http
+            containerPort: 4180
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        securityContext: {}
 
     # Bump whenever a value consumed through envFrom changes — most often a
     # rotated MATRIX_ACCESS_TOKEN. A Secret read via envFrom is injected ONCE

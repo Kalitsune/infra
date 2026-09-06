@@ -8,6 +8,7 @@ spec:
   dnsNames:
     - "*.kalitsune.net"
     - "*.lab.kalitsune.net"
+    - "*.hermes.kalitsune.net"
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer

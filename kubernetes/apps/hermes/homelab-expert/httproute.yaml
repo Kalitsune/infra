@@ -1,0 +1,44 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: homelab-expert
+  namespace: hermes
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - homelab-expert.hermes.kalitsune.net
+  rules:
+    # Rule 1 – pass through when provider is already set (prevents redirect loop)
+    - matches:
+        - path:
+            type: Exact
+            value: /auth/login
+          queryParams:
+            - name: provider
+              type: Exact
+              value: self-hosted
+      backendRefs:
+        - name: homelab-expert
+          port: 4180
+
+    # Rule 2 – redirect /auth/login to inject provider=self-hosted
+    # Unlike the main hermes release, there is no Lua filter for this hostname,
+    # so this rule always fires (the next= param is dropped, but login succeeds).
+    - matches:
+        - path:
+            type: Exact
+            value: /auth/login
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            statusCode: 302
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /auth/login?provider=self-hosted
+
+    # Rule 3 – all other traffic
+    - backendRefs:
+        - name: homelab-expert
+          port: 4180
