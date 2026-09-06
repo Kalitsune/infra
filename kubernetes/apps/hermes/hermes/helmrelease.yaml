@@ -87,6 +87,9 @@ spec:
       - name: honcho-client-secrets
         secret:
           secretName: honcho-client-secrets
+      - name: hermes-matrix-secrets
+        secret:
+          secretName: hermes-matrix-secrets
 
     extraInitContainers:
       # The Honcho memory plugin ships in the Hermes image, but its SDK
@@ -190,7 +193,36 @@ spec:
                 key="${f##*/}"
                 printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
               done
-              echo "seeded .env for profile: $profile"
+
+              # Verbatim (NOT base64) profile settings.
+              #
+              # Hermes never base64-decodes .env, so the loop above only works
+              # because every consumer of those keys decodes them by hand
+              # (bin/env.sh, bin/regen-*.py). That is right for multi-line
+              # blobs like a kubeconfig or an SSH key, and wrong for anything
+              # Hermes itself reads directly.
+              #
+              # These MUST live in the profile .env rather than in extraEnv.
+              # With gateway.multiplex_profiles enabled, gateway/authz_mixin.py
+              # reads allowlists through _auth_env() -> the per-profile secret
+              # scope, and a scoped miss deliberately does NOT fall through to
+              # os.environ (upstream issue #72348: falling through would leak
+              # one profile's allowlist into another). MATRIX_* is not in
+              # secret_scope._GLOBAL_ENV_EXACT/_PREFIXES, so a process env var
+              # set via extraEnv is INVISIBLE to authorization and every sender
+              # hits default-deny — the symptom is the bot answering a DM with
+              # a pairing code instead of a reply.
+              verbatim_dir="/hermes-profile-env/$profile"
+              if [ -d "$verbatim_dir" ]; then
+                for f in "$verbatim_dir"/*; do
+                  [ -f "$f" ] || continue
+                  key="${f##*/}"
+                  # Single-line values only; strip any trailing newline so the
+                  # value is not silently corrupted.
+                  printf '%s=%s\n' "$key" "$(tr -d '\r\n' < "$f")" >> "$env_file"
+                done
+                echo "seeded verbatim env for profile: $profile"
+              fi
             done
 
             # Honcho memory config, written ONCE at the Hermes root rather
@@ -232,6 +264,12 @@ spec:
           - name: honcho-client-secrets
             mountPath: /honcho-client-secrets
             readOnly: true
+          # Matrix settings, written VERBATIM into the profile .env (see the
+          # verbatim block in the script above). Mounted as files so each key
+          # becomes one .env line.
+          - name: hermes-matrix-secrets
+            mountPath: /hermes-profile-env/infra-expert
+            readOnly: true
 
     extraVolumeMounts:
       # Managed scope directory. Hermes merges this config.yaml over every
@@ -263,63 +301,14 @@ spec:
       - name: HASS_URL
         value: "http://192.168.1.164"
 
-      # ---------------------------------------------------------- Matrix
+      # NOTE: MATRIX_* settings are deliberately NOT here.
       #
-      # Gateway connection for the infra-expert agent, as
-      # @hermes-expert:kalitsune.net. Non-secret settings live here; the
-      # access token is in matrix-secret.yaml (SOPS) and arrives via
-      # extraEnvFrom below.
-      #
-      # The bot uses a TOKEN, not a password, and that is not a preference:
-      # this homeserver runs OIDC delegation in "exclusive" mode, so
-      # /_matrix/client/v3/login returns M_UNRECOGNIZED and password login
-      # is impossible. The account was created locally with
-      # `!admin users create` + `!admin users issue-token` from the admin
-      # room. Note issue-token explicitly does NOT work on accounts imported
-      # from the identity provider, so the bot must stay a LOCAL account —
-      # do not "tidy" it into Pocket ID.
-      #
-      # Points at the SERVING host, not the server_name. server_name is the
-      # apex kalitsune.net, but the apex does not yet serve
-      # /.well-known/matrix/client, so a client asked to resolve
-      # kalitsune.net finds nothing. matrix.kalitsune.net is the address that
-      # actually answers.
-      - name: MATRIX_HOMESERVER
-        value: "https://matrix.kalitsune.net"
-
-      # Allowlist of exactly one. Anyone on this list can drive the agent,
-      # which holds cluster-admin kubeconfig, a git deploy key with push
-      # access to main (where a push IS a deploy), and full terminal access.
-      # Adding a user here grants them the cluster. Treat it as such.
-      - name: MATRIX_ALLOWED_USERS
-        value: "@maple:kalitsune.net"
-
-      # Require an explicit @mention before responding in a room, so the bot
-      # stays quiet in shared rooms and only acts when addressed. DMs do not
-      # need a mention. This is the default, pinned because it is security
-      # relevant and a default flip should not silently change behaviour.
-      - name: MATRIX_REQUIRE_MENTION
-        value: "true"
-
-      # E2EE deliberately OFF for now.
-      #
-      # Client<->server traffic is already TLS 1.3 (verified:
-      # TLS_AES_256_GCM_SHA384, Let's Encrypt *.kalitsune.net), and
-      # federation is currently down, so nothing leaves the network. What
-      # E2EE would add is protection from the homeserver itself — Continuwuity
-      # stores message bodies in plaintext RocksDB on a local-path PVC.
-      #
-      # It is a real but modest gain here, and it carries a genuine failure
-      # mode (device-ID drift producing undecryptable messages), so it ships
-      # as a deliberate second step rather than bundled with initial setup.
-      # The crypto store already resolves onto the persistent volume at
-      # /opt/data/profiles/<profile>/platforms/matrix/store/crypto.db, so
-      # keys WILL survive restarts. To enable: set MATRIX_E2EE_MODE and pin
-      # MATRIX_DEVICE_ID (currently qVN0u9ftRj) so the store is not reset.
-      # - name: MATRIX_E2EE_MODE
-      #   value: "optional"
-      # - name: MATRIX_DEVICE_ID
-      #   value: "qVN0u9ftRj"
+      # They live in matrix-secret.yaml and are written verbatim into the
+      # profile .env by seed-profiles. With gateway.multiplex_profiles on,
+      # gateway/authz_mixin.py resolves allowlists through the per-profile
+      # secret scope and a scoped miss does NOT fall back to os.environ, so a
+      # value set here would be invisible to authorization and every sender
+      # would be denied. See the Matrix section of README.md.
     extraContainers:
       - name: oauth2-proxy
         image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
@@ -382,7 +371,7 @@ spec:
     #
     # generation 2: Matrix account renamed to @hermes-homelab-expert.
     podAnnotations:
-      kalitsune.net/env-generation: "2"
+      kalitsune.net/env-generation: "3"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #

@@ -223,37 +223,95 @@ can hold a **separate Matrix account** and the bots can message each other. Give
 each new bot its own `!admin users create` + `issue-token`, and its own
 Secret; do not share one token across profiles.
 
-### Why the token is a global Secret, not a per-profile one
+### Settings live in the profile `.env`, NOT in `extraEnv`
 
-`matrix-secret.yaml` is mounted through `extraEnvFrom`, not through the
-per-profile secret mechanism. The `seed-profiles` init container
-**base64-encodes** per-profile secret values into `<profile>/.env` — correct
-for a multi-line blob like a kubeconfig, but it would corrupt a plain token:
-the adapter would read the base64 text and every Matrix request would 401.
-`envFrom` delivers the value verbatim.
+**This is the one that will bite you.** Every `MATRIX_*` key is in
+`matrix-secret.yaml` and written **verbatim** into
+`/opt/data/profiles/<profile>/.env` by `seed-profiles`. Setting them via
+`extraEnv` looks correct, deploys cleanly, and **silently denies every
+sender**.
+
+Why: `gateway.multiplex_profiles` is enabled, so `gateway/authz_mixin.py`
+resolves allowlists through `_auth_env()` → the per-profile secret scope
+(`agent/secret_scope.py`). A scoped miss deliberately returns empty and
+**does not fall through to `os.environ`** — upstream issue #72348, so one
+profile's allowlist cannot leak into another. `MATRIX_*` is not in
+`_GLOBAL_ENV_EXACT` / `_GLOBAL_ENV_PREFIXES`, so a process env var set by
+`extraEnv` is invisible to authorization.
+
+The symptom is distinctive: the bot **answers a DM with a pairing code**
+instead of a reply, and the log shows
+
+```
+WARNING gateway.run: Unauthorized user: @maple:kalitsune.net (maple) on matrix
+```
+
+while `MATRIX_ALLOWED_USERS` is plainly visible in `kubectl get pod -o yaml`.
+
+### Verbatim vs base64 — two seeding paths
+
+`seed-profiles` writes per-profile **secret** files base64-encoded into
+`.env`. That is right for multi-line blobs (`KUBE_CONFIG`,
+`GITHUB_DEPLOY_KEY`) which `bin/env.sh` decodes by hand — and **wrong** for
+anything Hermes reads itself, because Hermes never base64-decodes `.env`.
+An allowlist seeded that way would be compared as base64 garbage and match
+nobody.
+
+So the Matrix Secret is mounted at `/hermes-profile-env/<profile>` and copied
+verbatim (trailing newline stripped). Two paths, deliberately:
+
+| Mount | Encoding | For |
+| --- | --- | --- |
+| `/hermes-profile-secrets/<profile>` | base64 | multi-line blobs decoded by `bin/env.sh` |
+| `/hermes-profile-env/<profile>` | verbatim | anything Hermes reads directly |
+
+Regression test — run it before touching that script:
+
+```sh
+kustomize build kubernetes/apps/hermes/hermes > /tmp/built.yaml
+uv run --with pyyaml python3 \
+  kubernetes/apps/hermes/hermes/test-verbatim-env.py /tmp/built.yaml
+```
+
+It asserts the verbatim keys arrive as plaintext, the secret blobs are still
+base64, and no value contains a newline. The pre-fix script fails it with
+`MATRIX_ALLOWED_USERS = ''` — exactly the production symptom.
 
 ### Settings, and which name actually works
 
-| Env var | Value | Why |
+| Key | Value | Why |
 | --- | --- | --- |
 | `MATRIX_HOMESERVER` | `https://matrix.kalitsune.net` | the SERVING host, not `server_name` |
-| `MATRIX_ACCESS_TOKEN` | SOPS (`matrix-secret.yaml`) | token auth; password login is impossible |
+| `MATRIX_ACCESS_TOKEN` | SOPS | token auth; password login is impossible |
 | `MATRIX_ALLOWED_USERS` | `@maple:kalitsune.net` | allowlist of exactly one |
 | `MATRIX_REQUIRE_MENTION` | `true` | quiet in rooms unless addressed |
 
-`MATRIX_HOMESERVER` points at `matrix.kalitsune.net` even though
-`server_name` is the apex `kalitsune.net`, because the apex does not yet
-serve `/.well-known/matrix/client` — a client told to resolve `kalitsune.net`
+All four live in `matrix-secret.yaml`. `MATRIX_HOMESERVER` points at
+`matrix.kalitsune.net` even though `server_name` is the apex
+`kalitsune.net`, because the apex does not yet serve
+`/.well-known/matrix/client` — a client told to resolve `kalitsune.net`
 finds nothing.
 
 **`MATRIX_ALLOWED_USERS` is a grant of cluster admin.** The agent holds a
 cluster-admin kubeconfig, a deploy key that can push to `main` (where a push
 is a deploy), and full terminal access. Adding a user hands them all of it.
 
-⚠️ **The plugin's own `plugin.yaml` documents `MATRIX_HOME_CHANNEL` for cron
-delivery, but the adapter reads `MATRIX_HOME_ROOM`** (`adapter.py`, the
-`cron_deliver_env_var` in `register()`). Use `MATRIX_HOME_ROOM`;
-`MATRIX_HOME_CHANNEL` is silently ignored.
+### Rotating the token or changing any setting
+
+Edit `matrix-secret.yaml` with `sops`, then **bump
+`podAnnotations.kalitsune.net/env-generation` in the same commit.** A Secret
+consumed via `envFrom` — or seeded by an init container — is read once at
+container start; editing it alone leaves the pod template unchanged, so
+Kubernetes rolls nothing, Flux reports `Ready`, and the process keeps the old
+value. That exact failure produced a `Matrix: sync error: Invalid token` loop
+against a Secret that was correct the whole time.
+
+The chart does stamp `checksum/config` and `checksum/secret`, but those cover
+the chart's **own** secret, not externally-managed ones.
+
+⚠️ **The plugin's `plugin.yaml` documents `MATRIX_HOME_CHANNEL` for cron
+delivery, but the adapter reads `MATRIX_HOME_ROOM`** (`cron_deliver_env_var`
+in `register()`). The documented name is silently ignored.
 
 ### E2EE — off, deliberately
 
