@@ -51,6 +51,8 @@ DEFAULT_VERBATIM_FILES = {
     "MATRIX_HOMESERVER": "https://matrix.kalitsune.net",
     "MATRIX_ALLOWED_USERS": "@maple:kalitsune.net",
     "MATRIX_REQUIRE_MENTION": "true",
+    "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-dummy-1",
+    "GOOGLE_API_KEY": "AIza-dummy-1",
 }
 
 # What must arrive base64-encoded (multi-line blob, decoded by bin/env.sh).
@@ -64,7 +66,23 @@ VERBATIM_FILES = {
     "MATRIX_HOMESERVER": "https://matrix.kalitsune.net",
     "MATRIX_ALLOWED_USERS": "@maple:kalitsune.net",
     "MATRIX_REQUIRE_MENTION": "true",
+    # LLM provider credential. Must reach the profile .env or the agent
+    # cannot talk to Anthropic at all under multiplexing:
+    #   WARNING gateway.run: Primary provider auth failed: No Anthropic
+    #   credentials found.
+    "CLAUDE_CODE_OAUTH_TOKEN": "sk-ant-oat-dummy-1",
+    "GOOGLE_API_KEY": "AIza-dummy-1",
 }
+
+# HASS_TOKEN must NOT be seeded per-profile: it is required_env for the
+# homeassistant platform, so both profiles would configure that adapter with
+# one credential and trip the duplicate-credential guard.
+FORBIDDEN_KEYS = ("HASS_TOKEN",)
+
+# LLM provider credentials. These MUST reach every profile's .env — they are
+# not platform adapters, so there is no duplicate-credential guard, and the
+# agent cannot run without them.
+PROVIDER_KEYS = ("CLAUDE_CODE_OAUTH_TOKEN",)
 
 
 def find_script(built, container):
@@ -120,6 +138,73 @@ def build_sandbox(root):
     open(os.path.join(root, "data", ".env"), "w").write(
         ROOT_ENV_EXISTING + ROOT_ENV_STALE_MATRIX
     )
+
+
+def check_manifest_projections(built):
+    """Validate what the per-profile env volumes actually project.
+
+    Returns (leaked, missing).
+
+    leaked  = required_env platform creds (HASS_TOKEN) projected per-profile.
+              Both profiles would configure that adapter with one credential
+              and the gateway refuses to start all but the first.
+
+    missing = provider creds NOT projected into a profile env dir. Under
+              multiplexing the agent reads them through the profile secret
+              scope, which never falls back to os.environ, so a key that is
+              only in the process env yields:
+                  Primary provider auth failed: No Anthropic credentials found
+    """
+    with open(built) as fh:
+        docs = [d for d in yaml.safe_load_all(fh) if d]
+
+    # Which volume backs each /hermes-profile-env/<profile> mount?
+    mount_by_volume = {}
+    values = {}
+    for d in docs:
+        if d.get("kind") != "HelmRelease":
+            continue
+        values = (d.get("spec") or {}).get("values") or {}
+        for c in values.get("extraInitContainers") or []:
+            for m in c.get("volumeMounts") or []:
+                mp = str(m.get("mountPath", ""))
+                if mp.startswith("/hermes-profile-env/"):
+                    mount_by_volume[m["name"]] = mp.rsplit("/", 1)[-1]
+
+    leaked, provided = [], {}
+    for v in values.get("extraVolumes") or []:
+        prof = mount_by_volume.get(v.get("name"))
+        if not prof:
+            continue
+        provided.setdefault(prof, set())
+        sources = (v.get("projected") or {}).get("sources") or []
+        if not sources and v.get("secret"):
+            sources = [{"secret": v["secret"]}]
+        for s in sources:
+            sec = s.get("secret") or {}
+            name = sec.get("name") or sec.get("secretName") or ""
+            items = sec.get("items")
+            if items is None:
+                if name == "hermes-secrets":
+                    leaked.append(f"{v['name']}: whole hermes-secrets projected")
+                # A whole-secret Matrix projection supplies the MATRIX_ keys.
+                if "matrix" in name:
+                    provided[prof] |= {"MATRIX_ACCESS_TOKEN"}
+                continue
+            for it in items:
+                key = it.get("key")
+                if key in FORBIDDEN_KEYS:
+                    leaked.append(f"{v['name']}: {key}")
+                provided[prof].add(key)
+
+    missing = []
+    for prof, keys in provided.items():
+        for req in PROVIDER_KEYS:
+            if req not in keys:
+                missing.append(f"{prof}: {req}")
+    if not provided:
+        missing.append("no /hermes-profile-env mounts found at all")
+    return leaked, missing
 
 
 def main():
@@ -244,6 +329,20 @@ def main():
             failures.append("both profiles share one MATRIX_ACCESS_TOKEN")
         print("profiles use distinct tokens:",
               "PASS" if env.get("MATRIX_ACCESS_TOKEN") != root_env.get("MATRIX_ACCESS_TOKEN") else "FAIL")
+
+        # 5. MANIFEST-LEVEL checks. These read the manifest itself rather than
+        #    the sandbox: the sandbox fixtures are written by this test, so
+        #    they would pass no matter what the manifest actually mounts.
+        leaked, missing = check_manifest_projections(sys.argv[1])
+        if leaked:
+            failures.append(f"platform credential projected per-profile: {leaked}")
+        print("no required_env platform creds projected:",
+              "PASS" if not leaked else f"FAIL {leaked}")
+
+        if missing:
+            failures.append(f"provider credential not projected: {missing}")
+        print("provider creds projected into every profile:",
+              "PASS" if not missing else f"FAIL {missing}")
 
         print()
         if failures:

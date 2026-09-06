@@ -87,12 +87,39 @@ spec:
       - name: honcho-client-secrets
         secret:
           secretName: honcho-client-secrets
-      - name: hermes-matrix-secrets
-        secret:
-          secretName: hermes-matrix-secrets
-      - name: hermes-matrix-secrets-default
-        secret:
-          secretName: hermes-matrix-secrets-default
+      # Per-profile env directories, assembled from several Secrets.
+      #
+      # Each holds that profile's OWN Matrix credential plus the shared LLM
+      # provider credentials. Keys are selected explicitly rather than
+      # projecting all of hermes-secrets: HASS_TOKEN is `required_env` for the
+      # homeassistant platform, so seeding it into BOTH profiles would make
+      # both configure that adapter with one token and trip the same
+      # "refusing to start the duplicate" guard that broke Matrix. Home
+      # Assistant stays on the process env, configured once by `default`.
+      - name: infra-expert-env
+        projected:
+          sources:
+            - secret:
+                name: hermes-matrix-secrets
+            - secret:
+                name: hermes-secrets
+                items:
+                  - key: CLAUDE_CODE_OAUTH_TOKEN
+                    path: CLAUDE_CODE_OAUTH_TOKEN
+                  - key: GOOGLE_API_KEY
+                    path: GOOGLE_API_KEY
+      - name: default-env
+        projected:
+          sources:
+            - secret:
+                name: hermes-matrix-secrets-default
+            - secret:
+                name: hermes-secrets
+                items:
+                  - key: CLAUDE_CODE_OAUTH_TOKEN
+                    path: CLAUDE_CODE_OAUTH_TOKEN
+                  - key: GOOGLE_API_KEY
+                    path: GOOGLE_API_KEY
 
     extraInitContainers:
       # The Honcho memory plugin ships in the Hermes image, but its SDK
@@ -242,7 +269,8 @@ spec:
               root_env=/opt/data/.env
               touch "$root_env"
               # Remove only keys we manage; everything else is preserved.
-              grep -v '^MATRIX_' "$root_env" > "$root_env.tmp" 2>/dev/null || : > "$root_env.tmp"
+              grep -vE '^(MATRIX_|CLAUDE_CODE_OAUTH_TOKEN=|GOOGLE_API_KEY=)' \
+                "$root_env" > "$root_env.tmp" 2>/dev/null || : > "$root_env.tmp"
               mv "$root_env.tmp" "$root_env"
               for f in "$default_env_dir"/*; do
                 [ -f "$f" ] || continue
@@ -295,15 +323,15 @@ spec:
           # Matrix settings, written VERBATIM into the profile .env (see the
           # verbatim block in the script above). Mounted as files so each key
           # becomes one .env line.
-          - name: hermes-matrix-secrets
+          - name: infra-expert-env
             mountPath: /hermes-profile-env/infra-expert
             readOnly: true
-          # Default-profile Matrix account (@hermes:kalitsune.net). A SEPARATE
-          # credential is mandatory, not cosmetic: the gateway refuses to run
-          # two profiles on one Matrix token ("refusing to start the duplicate
-          # — one credential cannot be consumed twice"), and the loser's
-          # adapter never starts.
-          - name: hermes-matrix-secrets-default
+          # Default-profile credentials (@hermes:kalitsune.net). A SEPARATE
+          # Matrix credential is mandatory, not cosmetic: the gateway refuses
+          # to run two profiles on one Matrix token ("refusing to start the
+          # duplicate — one credential cannot be consumed twice"), and the
+          # loser's adapter never starts.
+          - name: default-env
             mountPath: /hermes-profile-env/default
             readOnly: true
 
@@ -407,7 +435,7 @@ spec:
     #
     # generation 2: Matrix account renamed to @hermes-homelab-expert.
     podAnnotations:
-      kalitsune.net/env-generation: "4"
+      kalitsune.net/env-generation: "5"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
