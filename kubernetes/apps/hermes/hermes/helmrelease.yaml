@@ -366,6 +366,24 @@ spec:
           initialDelaySeconds: 5
           periodSeconds: 10
         securityContext: {}
+    # Bump whenever a value consumed through `envFrom` changes — most often
+    # a rotated MATRIX_ACCESS_TOKEN in matrix-secret.yaml.
+    #
+    # A Secret read via envFrom is injected ONCE, at container start. Editing
+    # it does NOT roll a StatefulSet: the pod template is unchanged, so
+    # Kubernetes does nothing, Flux reports the Kustomization Ready, and the
+    # running process keeps the OLD value. The symptom is a service that
+    # looks deployed and healthy while failing every request.
+    #
+    # This bit us exactly once: rotating the Matrix account left the gateway
+    # looping on `Matrix: sync error: Invalid token` against a correct Secret
+    # it had never re-read. This annotation IS part of the pod template, so
+    # bumping it in the same commit as the secret change is what applies it.
+    #
+    # generation 2: Matrix account renamed to @hermes-homelab-expert.
+    podAnnotations:
+      kalitsune.net/env-generation: "2"
+
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
     # The agent was OOMKilled (exit 137) on 2026-09-06 after ~3 days of
