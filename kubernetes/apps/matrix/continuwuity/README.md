@@ -212,14 +212,19 @@ this on removes it, leaving no admin and no path to create one.
 
 | Piece | Where |
 | --- | --- |
-| `discovery_url`, `client_id` | `configmap.yaml` |
-| `client_secret` | `oidc-secret.yaml` (SOPS-encrypted) |
+| `discovery_url`, `prompt_for_localpart` | `configmap.yaml` |
+| `client_id`, `client_secret` | `oidc-secret.yaml` (SOPS-encrypted) |
 | secret mounted into the pod | `envFrom` in `statefulset.yaml` |
 
+The `client_id` is a Pocket ID UUID and lives in the encrypted Secret next to
+the client secret rather than in the ConfigMap. It is not sensitive on its own
+— an OAuth client ID is public by design — but keeping the credential pair
+together means rotating the Pocket ID client touches exactly one file.
+
 All three must change together. Continuwuity builds its config from env var
-**names**, so mounting the secret without `discovery_url`/`client_id` creates
-a partial `oauth.oidc` section — not an absent one — which can fail config
-parsing at startup.
+**names**, so mounting the secret without `discovery_url` creates a partial
+`oauth.oidc` section — not an absent one — which can fail config parsing at
+startup.
 
 The redirect URI registered in Pocket ID is:
 
