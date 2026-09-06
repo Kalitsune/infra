@@ -281,6 +281,52 @@ spec:
               echo "seeded verbatim env for profile: default"
             fi
 
+            # Matrix crypto-store reset on device rotation.
+            #
+            # crypto.db binds the olm identity to ONE device_id. Rotating
+            # MATRIX_ACCESS_TOKEN issues a NEW device_id, but the store still
+            # holds the OLD identity, so the adapter runs as a device whose
+            # keys peers cannot use: no Olm session is ever established and
+            # every encrypted message fails with "Failed to decrypt megolm
+            # event: no session with given ID" while the pod looks healthy and
+            # Flux reports Ready. That is exactly how @hermes went silent in
+            # encrypted rooms on 2026-09-06 — including DMs, which only
+            # appeared to work beforehand because that room was unencrypted
+            # until the user turned encryption on.
+            #
+            # Detection is the store itself, not a marker file: SQLite stores
+            # TEXT inline, so the live device_id appears verbatim in crypto.db.
+            # If the CONFIGURED device_id is absent from the store, the store
+            # predates the current credential and is discarded. A store that
+            # already matches is left untouched, which makes this safe on
+            # first run and for profiles that were never rotated — verified
+            # against both live stores before shipping.
+            #
+            # Cost of a reset: previously-received room keys are lost, so
+            # messages sent BEFORE the rotation stay unreadable. New traffic
+            # works, because the fresh device negotiates new Olm sessions.
+            reset_stale_crypto_store() {
+              home_dir=$1
+              env_dir=$2
+              store="$home_dir/platforms/matrix/store"
+              [ -f "$env_dir/MATRIX_DEVICE_ID" ] || return 0
+              [ -f "$store/crypto.db" ] || return 0
+              want=$(tr -d '\r\n' < "$env_dir/MATRIX_DEVICE_ID")
+              [ -n "$want" ] || return 0
+              if grep -qa "$want" "$store/crypto.db"; then
+                echo "matrix crypto store current for $home_dir (device $want)"
+              else
+                rm -rf "$store"
+                echo "matrix crypto store RESET for $home_dir (configured device $want absent)"
+              fi
+            }
+
+            for profile in $profiles; do
+              reset_stale_crypto_store "/opt/data/profiles/$profile" \
+                "/hermes-profile-env/$profile"
+            done
+            reset_stale_crypto_store /opt/data /hermes-profile-env/default
+
             # Honcho memory config, written ONCE at the Hermes root rather
             # than per profile. The plugin resolves $HERMES_HOME/honcho.json
             # first and falls back to the root file, so every profile —
@@ -386,6 +432,32 @@ spec:
       - name: MATRIX_RECOVERY_KEY_OUTPUT_FILE
         value: "/opt/data/export/matrix-recovery-infra-expert.txt"
 
+      # Threading policy for GROUP rooms. Both are read with a bare
+      # os.getenv() (adapter.py _auto_thread / _matrix_session_scope), not
+      # through the per-profile secret scope, so the process env is the
+      # correct home and one setting covers both profiles. Neither is a
+      # credential nor required_env, so they cannot trip the
+      # duplicate-credential guard that forced MATRIX_* out of here.
+      #
+      # Default behaviour was: every group message the bot answers becomes a
+      # NEW synthetic Matrix thread rooted at that message, so a room fills
+      # with one-reply threads and each gets its own session.
+      #
+      # auto_thread=false stops creating them; session_scope=room is the
+      # documented companion that keeps unthreaded room messages in ONE
+      # stable room session instead of a per-event lane. Real Matrix threads
+      # a human starts are still honoured — that branch reads m.relates_to
+      # before this policy applies.
+      #
+      # Consequence to know: the bot no longer has "already participated in
+      # this thread" as a wake condition in groups, and MATRIX_REQUIRE_MENTION
+      # is true, so every group message now needs an @mention. DMs are
+      # unaffected (dm_auto_thread already defaults false).
+      - name: MATRIX_AUTO_THREAD
+        value: "false"
+      - name: MATRIX_SESSION_SCOPE
+        value: "room"
+
       # NOTE: MATRIX_* settings are deliberately NOT here.
       #
       # They live in matrix-secret.yaml and are written verbatim into the
@@ -455,8 +527,14 @@ spec:
     # bumping it in the same commit as the secret change is what applies it.
     #
     # generation 2: Matrix account renamed to @hermes-homelab-expert.
+    # generation 11: rotated @hermes MATRIX_ACCESS_TOKEN + MATRIX_DEVICE_ID
+    #   (tCzzQjNh1b -> dkfEMY1lhu) to recover E2EE. The old device's identity
+    #   key rotated in place, so peers could not build Olm sessions with it and
+    #   never delivered room keys. A new token yields a fresh device ID with no
+    #   cached history on any peer client; the init container discards the
+    #   now-stale crypto store in the same rollout.
     podAnnotations:
-      kalitsune.net/env-generation: "10"
+      kalitsune.net/env-generation: "11"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
