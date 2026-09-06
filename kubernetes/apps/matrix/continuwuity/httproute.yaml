@@ -25,6 +25,25 @@ spec:
     # /.well-known/matrix/* and / (its landing page) all served from the same
     # origin, and this host serves nothing else, so path-splitting them would
     # add failure modes without removing any surface.
-    - backendRefs:
+    #
+    # Timeouts are raised because Matrix /sync is a LONG-POLL protocol: a
+    # client asks the server to hold the request open (typically 30s) until
+    # an event arrives. Envoy's default route timeout is 15s, so every idle
+    # sync was cut off mid-poll and the client saw
+    #
+    #   504 upstream request timeout
+    #
+    # ("upstream request timeout" is Envoy's own body, not Continuwuity's —
+    # the homeserver was healthy throughout.) The bot reconnected in a loop
+    # and never received anything, so it looked connected but was deaf.
+    #
+    # 180s covers the 30s sync poll with wide margin, and also the slow
+    # federation calls (signature verification when joining a large room)
+    # that would otherwise trip the same limit. request must be >=
+    # backendRequest; both are set so no layer silently keeps 15s.
+    - timeouts:
+        backendRequest: 180s
+        request: 180s
+      backendRefs:
         - name: continuwuity
           port: 8008
