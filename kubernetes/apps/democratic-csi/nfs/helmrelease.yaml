@@ -47,6 +47,8 @@ spec:
           datasetPermissionsGroup: 0
         nfs:
           shareHost: 192.168.1.162
+          shareMaprootUser: root
+          shareMaprootGroup: wheel
 
     storageClasses:
       - name: truenas-nfs
