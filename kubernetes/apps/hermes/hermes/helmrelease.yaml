@@ -365,6 +365,27 @@ spec:
       - name: HASS_URL
         value: "http://192.168.1.164"
 
+      # The ONE Matrix variable that belongs in the process env.
+      #
+      # _get_matrix_recovery_key_output_target() reads this with a bare
+      # os.getenv + Path.exists(), unlike _scoped_recovery_key() which is
+      # scope-aware. Under multiplexing one gateway process hosts both
+      # profiles, so os.environ mirrors the DEFAULT profile's .env and a
+      # value placed in infra-expert's own .env is invisible here (it logged
+      # "MATRIX_RECOVERY_KEY_OUTPUT_FILE is not configured" while holding the
+      # key in its scoped env).
+      #
+      # Safe to share: the default profile carries MATRIX_RECOVERY_KEY, so it
+      # takes the verify_with_recovery_key() branch and never reaches the
+      # bootstrap path that reads this. Only infra-expert consumes it, once,
+      # to write its generated key. Not a credential and not required_env for
+      # any platform, so it cannot trip the duplicate-credential guard.
+      #
+      # Promote the written key into that profile's MATRIX_RECOVERY_KEY, then
+      # this can go away.
+      - name: MATRIX_RECOVERY_KEY_OUTPUT_FILE
+        value: "/opt/data/export/matrix-recovery-infra-expert.txt"
+
       # NOTE: MATRIX_* settings are deliberately NOT here.
       #
       # They live in matrix-secret.yaml and are written verbatim into the
@@ -435,7 +456,7 @@ spec:
     #
     # generation 2: Matrix account renamed to @hermes-homelab-expert.
     podAnnotations:
-      kalitsune.net/env-generation: "9"
+      kalitsune.net/env-generation: "10"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
