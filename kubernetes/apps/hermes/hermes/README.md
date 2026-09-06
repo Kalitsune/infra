@@ -184,6 +184,106 @@ before restarting anything. Note the CPU limit of 2 cores comes from the
 chart and is intentionally left alone — Helm deep-merges, and only `memory` is
 overridden.
 
+## Matrix gateway
+
+The infra-expert agent is reachable on Matrix as
+**`@hermes-expert:kalitsune.net`**, talking to the homeserver in
+`kubernetes/apps/matrix/continuwuity`.
+
+### The bot must be a LOCAL account, not a Pocket ID user
+
+That homeserver runs OIDC delegation in `exclusive` mode, so
+`/_matrix/client/v3/login` returns `M_UNRECOGNIZED` — **password login is
+impossible and normal registration is disabled.** The account was created
+from the admin room:
+
+```
+!admin users create hermes-expert
+!admin users issue-token hermes-expert
+```
+
+`issue-token` explicitly **does not work on accounts imported from an
+identity provider**, which is precisely why the bot cannot be a Pocket ID
+user. Do not "tidy" it into the IdP — that removes the only way to mint its
+token.
+
+Verify a token without printing it:
+
+```sh
+curl -sS -H "Authorization: Bearer $(cat /path/to/token)" \
+  https://matrix.kalitsune.net/_matrix/client/v3/account/whoami
+# -> {"user_id":"@hermes-expert:kalitsune.net","device_id":"..."}
+```
+
+### One bot per profile
+
+Each Hermes profile runs its own gateway process (`gateway-default`,
+`gateway-infra-expert`) and its own Matrix store directory, so each profile
+can hold a **separate Matrix account** and the bots can message each other. Give
+each new bot its own `!admin users create` + `issue-token`, and its own
+Secret; do not share one token across profiles.
+
+### Why the token is a global Secret, not a per-profile one
+
+`matrix-secret.yaml` is mounted through `extraEnvFrom`, not through the
+per-profile secret mechanism. The `seed-profiles` init container
+**base64-encodes** per-profile secret values into `<profile>/.env` — correct
+for a multi-line blob like a kubeconfig, but it would corrupt a plain token:
+the adapter would read the base64 text and every Matrix request would 401.
+`envFrom` delivers the value verbatim.
+
+### Settings, and which name actually works
+
+| Env var | Value | Why |
+| --- | --- | --- |
+| `MATRIX_HOMESERVER` | `https://matrix.kalitsune.net` | the SERVING host, not `server_name` |
+| `MATRIX_ACCESS_TOKEN` | SOPS (`matrix-secret.yaml`) | token auth; password login is impossible |
+| `MATRIX_ALLOWED_USERS` | `@maple:kalitsune.net` | allowlist of exactly one |
+| `MATRIX_REQUIRE_MENTION` | `true` | quiet in rooms unless addressed |
+
+`MATRIX_HOMESERVER` points at `matrix.kalitsune.net` even though
+`server_name` is the apex `kalitsune.net`, because the apex does not yet
+serve `/.well-known/matrix/client` — a client told to resolve `kalitsune.net`
+finds nothing.
+
+**`MATRIX_ALLOWED_USERS` is a grant of cluster admin.** The agent holds a
+cluster-admin kubeconfig, a deploy key that can push to `main` (where a push
+is a deploy), and full terminal access. Adding a user hands them all of it.
+
+⚠️ **The plugin's own `plugin.yaml` documents `MATRIX_HOME_CHANNEL` for cron
+delivery, but the adapter reads `MATRIX_HOME_ROOM`** (`adapter.py`, the
+`cron_deliver_env_var` in `register()`). Use `MATRIX_HOME_ROOM`;
+`MATRIX_HOME_CHANNEL` is silently ignored.
+
+### E2EE — off, deliberately
+
+Client↔server is already TLS 1.3 (`TLS_AES_256_GCM_SHA384`, Let's Encrypt
+`*.kalitsune.net`). E2EE would add protection **from the homeserver itself**,
+which matters because Continuwuity stores message bodies in plaintext RocksDB
+on a `local-path` PVC.
+
+It is off for now because it carries a real failure mode (device-ID drift →
+undecryptable messages) and should be enabled as its own change, not bundled
+with initial setup. Note also that agent conversations are persisted to Honcho
+in plaintext regardless, so Matrix E2EE alone does not make the pipeline
+end-to-end private.
+
+Storage is **not** the blocker: the crypto store resolves to
+`/opt/data/profiles/<profile>/platforms/matrix/store/crypto.db` on the
+persistent volume, so keys survive restarts. To enable, uncomment in
+`helmrelease.yaml`:
+
+```yaml
+- name: MATRIX_E2EE_MODE
+  value: "optional"
+- name: MATRIX_DEVICE_ID
+  value: "qVN0u9ftRj"     # pin it, or the store resets and old messages break
+```
+
+Required packages (`mautrix`, `Markdown`, `aiosqlite`, `asyncpg`,
+`aiohttp-socks`, `olm`) are all present in the image venv — unlike the Honcho
+SDK, no init-container install is needed.
+
 ## Chart upgrades: the immutable `volumeClaimTemplates` trap
 
 `spec.chart.spec.version` is a range (`>=1.11.0 <2.0.0`), so a new chart

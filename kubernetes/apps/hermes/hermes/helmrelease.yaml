@@ -262,6 +262,64 @@ spec:
             key: clientSecret
       - name: HASS_URL
         value: "http://192.168.1.164"
+
+      # ---------------------------------------------------------- Matrix
+      #
+      # Gateway connection for the infra-expert agent, as
+      # @hermes-expert:kalitsune.net. Non-secret settings live here; the
+      # access token is in matrix-secret.yaml (SOPS) and arrives via
+      # extraEnvFrom below.
+      #
+      # The bot uses a TOKEN, not a password, and that is not a preference:
+      # this homeserver runs OIDC delegation in "exclusive" mode, so
+      # /_matrix/client/v3/login returns M_UNRECOGNIZED and password login
+      # is impossible. The account was created locally with
+      # `!admin users create` + `!admin users issue-token` from the admin
+      # room. Note issue-token explicitly does NOT work on accounts imported
+      # from the identity provider, so the bot must stay a LOCAL account —
+      # do not "tidy" it into Pocket ID.
+      #
+      # Points at the SERVING host, not the server_name. server_name is the
+      # apex kalitsune.net, but the apex does not yet serve
+      # /.well-known/matrix/client, so a client asked to resolve
+      # kalitsune.net finds nothing. matrix.kalitsune.net is the address that
+      # actually answers.
+      - name: MATRIX_HOMESERVER
+        value: "https://matrix.kalitsune.net"
+
+      # Allowlist of exactly one. Anyone on this list can drive the agent,
+      # which holds cluster-admin kubeconfig, a git deploy key with push
+      # access to main (where a push IS a deploy), and full terminal access.
+      # Adding a user here grants them the cluster. Treat it as such.
+      - name: MATRIX_ALLOWED_USERS
+        value: "@maple:kalitsune.net"
+
+      # Require an explicit @mention before responding in a room, so the bot
+      # stays quiet in shared rooms and only acts when addressed. DMs do not
+      # need a mention. This is the default, pinned because it is security
+      # relevant and a default flip should not silently change behaviour.
+      - name: MATRIX_REQUIRE_MENTION
+        value: "true"
+
+      # E2EE deliberately OFF for now.
+      #
+      # Client<->server traffic is already TLS 1.3 (verified:
+      # TLS_AES_256_GCM_SHA384, Let's Encrypt *.kalitsune.net), and
+      # federation is currently down, so nothing leaves the network. What
+      # E2EE would add is protection from the homeserver itself — Continuwuity
+      # stores message bodies in plaintext RocksDB on a local-path PVC.
+      #
+      # It is a real but modest gain here, and it carries a genuine failure
+      # mode (device-ID drift producing undecryptable messages), so it ships
+      # as a deliberate second step rather than bundled with initial setup.
+      # The crypto store already resolves onto the persistent volume at
+      # /opt/data/profiles/<profile>/platforms/matrix/store/crypto.db, so
+      # keys WILL survive restarts. To enable: set MATRIX_E2EE_MODE and pin
+      # MATRIX_DEVICE_ID (currently qVN0u9ftRj) so the store is not reset.
+      # - name: MATRIX_E2EE_MODE
+      #   value: "optional"
+      # - name: MATRIX_DEVICE_ID
+      #   value: "qVN0u9ftRj"
     extraContainers:
       - name: oauth2-proxy
         image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
@@ -347,6 +405,16 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
+      # Matrix access token for @hermes-expert:kalitsune.net.
+      #
+      # Mounted globally rather than as a per-profile secret on purpose. The
+      # seed-profiles init container base64-ENCODES per-profile secret values
+      # into <profile>/.env, which is right for multi-line blobs like a
+      # kubeconfig but would corrupt a plain token — the adapter would read
+      # the base64 text and every Matrix request would 401. envFrom delivers
+      # the value verbatim.
+      - secretRef:
+          name: hermes-matrix-secrets
     controller:
       type: statefulset
     persistence:

@@ -5,6 +5,7 @@ resources:
   - helmrepository.yaml
   - secret.yaml
   - profiles/infra-expert/secret.yaml
+  - matrix-secret.yaml
   - honcho-client-secret.yaml
   - managed-configmap.yaml
   - helmrelease.yaml
