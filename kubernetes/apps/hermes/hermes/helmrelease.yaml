@@ -435,7 +435,7 @@ spec:
     #
     # generation 2: Matrix account renamed to @hermes-homelab-expert.
     podAnnotations:
-      kalitsune.net/env-generation: "8"
+      kalitsune.net/env-generation: "9"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
