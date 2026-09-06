@@ -42,7 +42,7 @@ spec:
         zfs:
           datasetParentName: mass/k8s/nfs/vols
           detachedSnapshotsDatasetParentName: mass/k8s/nfs/snaps
-          datasetPermissionsMode: "0777"
+          datasetPermissionsMode: "0755"
           datasetPermissionsUser: 0
           datasetPermissionsGroup: 0
         nfs:
