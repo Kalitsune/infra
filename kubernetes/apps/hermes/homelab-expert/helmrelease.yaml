@@ -208,6 +208,8 @@ spec:
     # seeding dance is unnecessary.
     extraEnvFrom:
       - secretRef:
+          name: hermes-secrets
+      - secretRef:
           name: homelab-expert-matrix-secrets
 
     extraVolumes:
