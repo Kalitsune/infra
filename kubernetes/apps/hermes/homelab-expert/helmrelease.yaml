@@ -1,0 +1,370 @@
+# Isolated Hermes release for the homelab-expert agent.
+#
+# WHY THIS EXISTS AS A SEPARATE RELEASE
+#
+# The original design ran both agents as profiles inside ONE pod with
+# `gateway.multiplex_profiles: true`. Secret *plumbing* was correct — the
+# infra credentials were mounted only into the infra-expert profile's own
+# directory and never appeared in the default profile's .env — but that is not
+# an isolation boundary, because:
+#
+#   * The NFS export squashes every UID to 3001. A file written by the
+#     container's uid 10000 lands owned by 3001, so mode 0600 means "readable
+#     by 3001" == readable by every process on the volume. Verified by writing
+#     a probe file as uid 10000 and reading back uid=3001, and by reading the
+#     0600 deploy key from a session running as a different uid.
+#   * Both profiles were the SAME OS process (multiplexing), on the SAME
+#     volume, as the SAME uid. Only path separation stood between them.
+#   * The default profile sets no `toolsets` key, so it gets the default set
+#     including `terminal` — i.e. it could simply `cat` the other profile's
+#     credentials.
+#
+# The exposed material was a cluster-admin kubeconfig
+# (`kubectl auth can-i get secrets -A` -> yes) and the push-capable infra
+# deploy key. Since the default agent auto-accepts room invites and talks to
+# anyone in its allowlist, a prompt injection there was a full cluster-admin
+# and repo-write compromise.
+#
+# THE FIX IS PROCESS + VOLUME SEPARATION, NOT TIGHTER FILE MODES.
+# This release runs its own pod, with its own PVC (own NFS export path), its
+# own gateway process, and multiplexing OFF. The infra secret is mounted only
+# here. File modes are irrelevant once the volume itself is not shared.
+#
+# The operator is separately fixing the NFS export's UID squashing; these two
+# changes are complementary, and neither alone is sufficient.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: homelab-expert
+  namespace: hermes
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: hermes-agent
+      version: ">=1.13.0 <2.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: hermes-agent
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+
+  values:
+    # Keep resource names short and stable. Without this the chart would
+    # generate `homelab-expert-hermes-agent`; the StatefulSet's
+    # volumeClaimTemplates name is baked into the PVC name, so changing this
+    # later orphans the volume.
+    fullnameOverride: homelab-expert
+
+    # THE agent identity for this pod. This profile is the ROOT profile here
+    # (HERMES_HOME=/opt/data), not a sub-profile, so there is no
+    # profiles/<name>/ directory and no multiplexing. That is the point: one
+    # process, one identity, one credential set.
+    #
+    # Multiplexing is deliberately NOT enabled. Re-enabling it would put a
+    # second identity back inside this process and undo the isolation.
+    config:
+      model:
+        provider: anthropic
+        default: claude-opus-5
+      agent:
+        reasoning_effort: max
+      toolsets:
+        - terminal
+        - file
+        - coding
+        - debugging
+        - code_execution
+        - web
+        - search
+        - vision
+        - memory
+        - context_engine
+        - safe
+        - clarify
+        - session_search
+        - skills
+        - todo
+
+    # overwrite: false — config.yaml and SOUL.md are seeded on first boot and
+    # then left alone. The agent edits its own config at runtime (model
+    # switches, onboarding flags); overwrite:true would revert those on every
+    # reconcile.
+    bootstrap:
+      enabled: true
+      overwrite: false
+
+    soul:
+      textFrom:
+        configMapKeyRef:
+          name: homelab-expert-soul
+          key: SOUL.md
+
+    controller:
+      type: statefulset
+
+    # Its OWN volume. This is the isolation boundary that actually holds:
+    # a distinct NFS export path, so UID squashing on the server cannot
+    # expose these files to the other release's pod.
+    persistence:
+      enabled: true
+      storageClass: truenas-nfs
+      accessModes:
+        - ReadWriteMany
+      size: 5Gi
+
+    # Sized from the measured floor of the shared pod (~1 GiB anon RSS) rather
+    # than the chart defaults. A request far below real usage drives
+    # oom_score_adj toward 1000 and elects this pod as the node's first OOM
+    # victim. See the sibling release's resources block for the full RCA.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+
+    env:
+      OPENAI_API_KEY: ""
+
+    extraEnv:
+      - name: HASS_URL
+        value: "http://192.168.1.164"
+
+      # Group-room threading policy. Read via bare os.getenv() in the Matrix
+      # adapter, so the process env is the correct home. auto_thread=false
+      # stops every answered group message from spawning a one-reply thread;
+      # session_scope=room keeps unthreaded room messages in one stable
+      # session. Real threads a human starts are still honoured.
+      - name: MATRIX_AUTO_THREAD
+        value: "false"
+      - name: MATRIX_SESSION_SCOPE
+        value: "room"
+
+    # Credentials. Both Secrets are mounted ONLY into this release — that is
+    # the whole point of the split.
+    #
+    # hermes-matrix-secrets carries this agent's own Matrix account, and
+    # homelab-expert-secrets carries the infra deploy key + kubeconfig.
+    # Unlike the multiplexed setup, there is no second profile in this process
+    # that could read them, so envFrom is safe here and the per-profile .env
+    # seeding dance is unnecessary.
+    extraEnvFrom:
+      - secretRef:
+          name: homelab-expert-matrix-secrets
+
+    extraVolumes:
+      # NOTE: this Secret is still named `hermes-infra-expert-secrets`.
+      # Its SOPS metadata (apiVersion/kind/metadata) is itself encrypted, so
+      # the name cannot be rewritten without the age private key, which lives
+      # with the operator. Renaming it is cosmetic and can happen later with
+      # `sops` in hand; the isolation does not depend on the name.
+      - name: infra-secrets
+        secret:
+          secretName: hermes-infra-expert-secrets
+          defaultMode: 0400
+      - name: honcho-client-secrets
+        secret:
+          secretName: honcho-client-secrets
+      - name: hermes-managed
+        configMap:
+          name: hermes-managed
+      - name: bundled-skills
+        configMap:
+          name: homelab-expert-bundled-skills
+      # ONE-SHOT MIGRATION MOUNT — safe to delete once the new pod is up.
+      #
+      # The old shared volume, mounted READ-ONLY and ONLY into the
+      # seed-agent-home init container below. The agent container does NOT
+      # mount it (init containers carry their own volumeMounts), so the
+      # process that could be prompt-injected has no path to it. The init
+      # script is fixed content from git, not agent-controlled.
+      #
+      # This is the only way to move 12 MB of state (11 MB state.db alone) —
+      # far past the 1 MB ConfigMap ceiling. The claim is ReadWriteMany, so
+      # mounting it here does not disturb the running pod.
+      #
+      # After the migration marker exists, this block and its volumeMount are
+      # dead weight: remove them in a follow-up commit.
+      - name: migration-old-volume
+        persistentVolumeClaim:
+          claimName: data-hermes-hermes-agent-0
+          readOnly: true
+
+    extraVolumeMounts:
+      - name: hermes-managed
+        mountPath: /etc/hermes
+        readOnly: true
+
+    extraInitContainers:
+      # The Honcho memory plugin ships in the image but its SDK does not.
+      # Hermes seals its own venv and redirects runtime installs to
+      # HERMES_LAZY_INSTALL_TARGET on the data volume, which hermes_bootstrap
+      # appends to sys.path at startup — so install into that same directory.
+      #
+      # --no-deps is deliberate: honcho-ai needs only httpx>=0.28 and
+      # pydantic>=2, both already present at compatible versions. Pulling its
+      # own copies into an append-only path risks two pydantic versions in one
+      # interpreter.
+      - name: install-honcho-sdk
+        image: nousresearch/hermes-agent:v2026.8.31
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            target=/opt/data/lazy-packages
+            mkdir -p "$target"
+            if [ -d "$target/honcho" ]; then
+              echo "honcho-ai already present, skipping"
+              exit 0
+            fi
+            uv pip install --target "$target" --no-deps 'honcho-ai==2.2.0'
+            echo "installed honcho-ai into $target"
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+
+      - name: seed-agent-home
+        image: busybox:1.38
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+
+            # Infra credentials -> .env, base64-encoded.
+            #
+            # These are multi-line blobs (an SSH key, a kubeconfig). A shell
+            # env var silently truncates at the first newline, so they are
+            # stored encoded and decoded on use by bin/env.sh. The agent's
+            # bootstrap script knows this convention.
+            env_file=/opt/data/.env
+            touch "$env_file"
+            chmod 600 "$env_file"
+            grep -vE '^(GITHUB_DEPLOY_KEY|GITHUB_REPO|KUBE_CONFIG)=' \
+              "$env_file" > "$env_file.tmp" 2>/dev/null || : > "$env_file.tmp"
+            mv "$env_file.tmp" "$env_file"
+            for f in /infra-secrets/*; do
+              [ -f "$f" ] || continue
+              key="${f##*/}"
+              printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
+            done
+            chmod 600 "$env_file"
+            echo "seeded infra credentials into $env_file"
+
+            # Honcho memory config. Written at the Hermes root because this
+            # profile IS the root profile here. peerName is shared with the
+            # other release so both agents see one view of the user, while
+            # each keeps its own AI peer and therefore its own self-model.
+            api_key="$(cat /honcho-client-secrets/HONCHO_API_KEY)"
+            cat > /opt/data/honcho.json <<EOF
+            {
+              "enabled": true,
+              "baseUrl": "http://honcho.honcho.svc.cluster.local:8000",
+              "apiKey": "$api_key",
+              "workspace": "hermes",
+              "peerName": "kalitsune",
+              "recallMode": "hybrid",
+              "writeFrequency": "async",
+              "sessionStrategy": "global",
+              "saveMessages": true
+            }
+            EOF
+            chmod 600 /opt/data/honcho.json
+            echo "seeded honcho.json"
+
+            # ORDER MATTERS: migrate BEFORE linking bundled skills.
+            #
+            # The migration copies whole directories and refuses to overwrite
+            # an existing destination. Linking runs first would create
+            # /opt/data/skills, so the `skills` entry would be skipped and
+            # every agent-authored skill silently lost -- the exact class of
+            # bug that destroyed authored skills twice in the old setup.
+            # Caught by bin/test-split-init.py before this ever shipped.
+            #
+            # One-shot migration of this agent's own state off the shared
+            # volume: skills it authored (which exist in no image and no git
+            # tree), memories, and session history.
+            #
+            # Guarded by a marker file so it runs exactly once, and every copy
+            # is skipped when the destination already exists -- so a re-run can
+            # never clobber live state. The source is mounted read-only.
+            marker=/opt/data/.migrated-from-shared-volume
+            src=/migration/profiles/infra-expert
+            if [ ! -f "$marker" ] && [ -d "$src" ]; then
+              echo "migrating profile state from the shared volume"
+              for item in skills memories sessions state.db SOUL.md \
+                          matrix_threads.json auth.json honcho.json; do
+                if [ -e "$src/$item" ] && [ ! -e "/opt/data/$item" ]; then
+                  cp -a "$src/$item" /opt/data/
+                  echo "  migrated $item"
+                else
+                  echo "  skipped $item (absent at source or already present)"
+                fi
+              done
+              touch "$marker"
+              echo "migration complete"
+            else
+              echo "migration already done or source absent — skipping"
+            fi
+
+            # Bundled-skill selection.
+            #
+            # The previous setup wrote a `.no-bundled-skills` marker and then
+            # symlinked back only the skills named in a curated list, so the
+            # agent loaded 10 bundled skills rather than everything shipped in
+            # the image. Reproduce that here, or the skill set silently
+            # changes on migration.
+            #
+            # Bundled skills are symlinks into /opt/hermes/skills; the agent's
+            # own authored skills are real directories, migrated above. Only
+            # symlinks are cleared on each run, so re-linking can never touch
+            # authored content — the `rm -rf` that destroyed authored skills
+            # twice in the old setup is deliberately not used here.
+            skills_dest=/opt/data/skills
+            mkdir -p "$skills_dest"
+            touch /opt/data/.no-bundled-skills
+            find "$skills_dest" -type l -exec rm -f {} +
+            find "$skills_dest" -mindepth 1 -type d -empty -delete
+            while IFS= read -r skill || [ -n "$skill" ]; do
+              [ -z "$skill" ] && continue
+              # No existence check on the target: this init container is
+              # busybox and has no /opt/hermes, so testing the path would skip
+              # every skill. The symlink is deliberately dangling here and
+              # resolves in the agent container, which does have the image's
+              # skill tree. This mirrors the previous working setup.
+              mkdir -p "$skills_dest/$(dirname "$skill")"
+              ln -sfn "/opt/hermes/skills/$skill" \
+                "$skills_dest/$(dirname "$skill")/$(basename "$skill")"
+            done < /bundled-skills/skills
+            echo "linked bundled skills"
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+          - name: infra-secrets
+            mountPath: /infra-secrets
+            readOnly: true
+          - name: honcho-client-secrets
+            mountPath: /honcho-client-secrets
+            readOnly: true
+          - name: bundled-skills
+            mountPath: /bundled-skills
+            readOnly: true
+          - name: migration-old-volume
+            mountPath: /migration
+            readOnly: true
+
+    # Bump whenever a value consumed through envFrom changes — most often a
+    # rotated MATRIX_ACCESS_TOKEN. A Secret read via envFrom is injected ONCE
+    # at container start; editing it does NOT roll a StatefulSet, so the
+    # process keeps the OLD value while Flux reports Ready.
+    podAnnotations:
+      kalitsune.net/env-generation: "1"

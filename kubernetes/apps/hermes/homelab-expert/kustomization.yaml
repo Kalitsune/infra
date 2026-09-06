@@ -1,0 +1,27 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - secret.yaml
+  - matrix-secret.yaml
+  - helmrelease.yaml
+
+configMapGenerator:
+  # SOUL.md is passed to the chart through soul.textFrom rather than being
+  # seeded by a bespoke init container, so it lives in its own ConfigMap.
+  # disableNameSuffixHash keeps the name stable: the HelmRelease references it
+  # by name, and a content hash would break that reference on every edit.
+  - name: homelab-expert-soul
+    namespace: hermes
+    options:
+      disableNameSuffixHash: true
+    files:
+      - SOUL.md=SOUL.md
+  # Curated list of bundled skills to link into the agent's home. Without
+  # this the agent would load every skill shipped in the image instead of
+  # the 10 it actually uses.
+  - name: homelab-expert-bundled-skills
+    namespace: hermes
+    options:
+      disableNameSuffixHash: true
+    files:
+      - skills=skills

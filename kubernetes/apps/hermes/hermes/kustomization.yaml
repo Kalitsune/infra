@@ -4,8 +4,6 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - secret.yaml
-  - profiles/infra-expert/secret.yaml
-  - matrix-secret.yaml
   - matrix-secret-default.yaml
   - honcho-client-secret.yaml
   - managed-configmap.yaml
@@ -15,12 +13,6 @@ resources:
   - rbac.yaml
   - hermes-auth-redirect.yaml
 
-configMapGenerator:
-  - name: hermes-profiles
-    namespace: hermes
-    options:
-      disableNameSuffixHash: true
-    files:
-      - infra-expert--SOUL.md=profiles/infra-expert/SOUL.md
-      - infra-expert--config.yaml=profiles/infra-expert/config.yaml
-      - infra-expert--skills=profiles/infra-expert/skills
+# The hermes-profiles ConfigMap and the infra-expert profile secret are gone:
+# that agent now runs as its own release in ../homelab-expert with its own
+# pod, PVC and credentials. This release hosts the default agent only.

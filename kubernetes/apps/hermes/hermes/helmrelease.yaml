@@ -65,79 +65,44 @@ spec:
       model:
         provider: anthropic
         default: claude-sonnet-5
-      gateway:
-        multiplex_profiles: true
-        multiplex_profile_allowlist:
-          - infra-expert
+      # Multiplexing is GONE. It previously hosted the infra-expert agent as a
+      # second profile inside this process; that agent now runs as its own
+      # release (../homelab-expert) with its own pod, PVC and credentials.
+      #
+      # Do not re-enable it to add another agent. Two profiles in one process
+      # on one volume share a uid, and the NFS export squashes every uid to a
+      # single owner -- so file modes cannot separate them and any profile
+      # with the `terminal` toolset can read the others' credentials. Give a
+      # new agent its own release instead.
 
     extraVolumes:
-      - name: hermes-profiles
-        configMap:
-          name: hermes-profiles
-      - name: infra-expert-secrets
-        secret:
-          secretName: hermes-infra-expert-secrets
-      # Managed scope: an IT-pinned config layer that Hermes merges over
-      # EVERY profile's config.yaml, including profiles created at runtime
-      # that this repo has never seen. Used to turn on the Honcho memory
-      # provider globally — see kubernetes/apps/honcho/honcho/README.md.
-      - name: hermes-managed
-        configMap:
-          name: hermes-managed
       - name: honcho-client-secrets
         secret:
           secretName: honcho-client-secrets
-      # Per-profile env directories, assembled from several Secrets.
-      #
-      # Each holds that profile's OWN Matrix credential plus the shared LLM
-      # provider credentials. Keys are selected explicitly rather than
-      # projecting all of hermes-secrets: HASS_TOKEN is `required_env` for the
-      # homeassistant platform, so seeding it into BOTH profiles would make
-      # both configure that adapter with one token and trip the same
-      # "refusing to start the duplicate" guard that broke Matrix. Home
-      # Assistant stays on the process env, configured once by `default`.
-      - name: infra-expert-env
-        projected:
-          sources:
-            - secret:
-                name: hermes-matrix-secrets
-            - secret:
-                name: hermes-secrets
-                items:
-                  - key: CLAUDE_CODE_OAUTH_TOKEN
-                    path: CLAUDE_CODE_OAUTH_TOKEN
-                  - key: GOOGLE_API_KEY
-                    path: GOOGLE_API_KEY
-      - name: default-env
-        projected:
-          sources:
-            - secret:
-                name: hermes-matrix-secrets-default
-            - secret:
-                name: hermes-secrets
-                items:
-                  - key: CLAUDE_CODE_OAUTH_TOKEN
-                    path: CLAUDE_CODE_OAUTH_TOKEN
-                  - key: GOOGLE_API_KEY
-                    path: GOOGLE_API_KEY
+      # Managed scope: an IT-pinned config layer Hermes merges over every
+      # profile's config.yaml, including profiles created at runtime. Used to
+      # turn on the Honcho memory provider globally.
+      - name: hermes-managed
+        configMap:
+          name: hermes-managed
 
     extraInitContainers:
-      # The Honcho memory plugin ships in the Hermes image, but its SDK
-      # (honcho-ai) does not. Without it the plugin logs "honcho-ai package
-      # not installed — plugin inactive" at debug level and silently does
-      # nothing: memory looks configured but never records or recalls.
+      # The Honcho memory plugin ships in the image, but its SDK does not.
+      # Without it the plugin logs "honcho-ai package not installed -- plugin
+      # inactive" at debug level and silently does nothing: memory looks
+      # configured but never records or recalls.
       #
       # Hermes seals its own venv (HERMES_DISABLE_LAZY_INSTALLS=1) and
       # redirects runtime installs to HERMES_LAZY_INSTALL_TARGET on the data
-      # volume, which hermes_bootstrap appends to sys.path at startup. This
-      # installs into that same directory so the import resolves on boot.
+      # volume, which hermes_bootstrap appends to sys.path at startup. Install
+      # into that same directory so the import resolves on boot.
       #
       # --no-deps is deliberate: honcho-ai needs only httpx>=0.28 and
       # pydantic>=2, both already in the core venv at compatible versions.
       # Pulling its own copies into an append-only path risks two versions of
       # pydantic in one interpreter.
       - name: install-honcho-sdk
-        image: nousresearch/hermes-agent:v2026.8.27
+        image: nousresearch/hermes-agent:v2026.8.31
         command:
           - sh
           - -c
@@ -155,185 +120,19 @@ spec:
           - name: data
             mountPath: /opt/data
 
-      - name: seed-profiles
+      - name: seed-agent-home
         image: busybox:1.38
         command:
           - sh
           - -c
           - |
             set -eu
-            src=/opt/hermes/skills
-            cm=/hermes-profiles
 
-            # Derive unique profile names from ConfigMap keys (<profile>--<file>)
-            profiles=$(ls "$cm" | sed 's/--.*//' | sort -u)
-
-            for profile in $profiles; do
-              dest=/opt/data/profiles/$profile
-              mkdir -p "$dest"
-
-              for f in "$cm/$profile"--*; do
-                [ -e "$f" ] || continue
-                filename="${f##*--}"
-                if [ "$filename" = "skills" ]; then
-                  skills_dest="$dest/skills"
-                  mkdir -p "$skills_dest"
-                  touch "$dest/.no-bundled-skills"
-
-                  # Re-link the bundled skills listed in the ConfigMap, but
-                  # remove ONLY what this container created on a previous run:
-                  # the symlinks. The previous `rm -rf "$skills_dest"` also
-                  # destroyed agent-authored skills, which are real
-                  # directories here and exist in no ConfigMap, no image and
-                  # no git tree — so every `helm upgrade` silently deleted
-                  # them. It has already happened twice.
-                  #
-                  # Deleting links (never their targets) keeps this
-                  # idempotent while making the wipe impossible.
-                  find "$skills_dest" -type l -exec rm -f {} +
-                  # Clear directories the link removal left empty, so a
-                  # renamed/removed bundled category does not linger. -mindepth 1
-                  # protects $skills_dest itself; real skills keep their files
-                  # so they are never empty and never matched.
-                  find "$skills_dest" -mindepth 1 -type d -empty -delete
-
-                  while IFS= read -r skill || [ -n "$skill" ]; do
-                    [ -z "$skill" ] && continue
-                    mkdir -p "$skills_dest/$(dirname "$skill")"
-                    ln -s "$src/$skill" "$skills_dest/$(dirname "$skill")/"
-                  done < "$f"
-                else
-                  cp "$f" "$dest/$filename"
-                fi
-              done
-
-              echo "seeded profile: $profile"
-            done
-
-            # Seed per-profile .env from mounted secret volumes
-            for profile in $profiles; do
-              secrets_dir="/hermes-profile-secrets/$profile"
-              [ -d "$secrets_dir" ] || continue
-              dest=/opt/data/profiles/$profile
-              mkdir -p "$dest"
-              env_file="$dest/.env"
-              : > "$env_file"
-              for f in "$secrets_dir"/*; do
-                [ -f "$f" ] || continue
-                key="${f##*/}"
-                printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
-              done
-
-              # Verbatim (NOT base64) profile settings.
-              #
-              # Hermes never base64-decodes .env, so the loop above only works
-              # because every consumer of those keys decodes them by hand
-              # (bin/env.sh, bin/regen-*.py). That is right for multi-line
-              # blobs like a kubeconfig or an SSH key, and wrong for anything
-              # Hermes itself reads directly.
-              #
-              # These MUST live in the profile .env rather than in extraEnv.
-              # With gateway.multiplex_profiles enabled, gateway/authz_mixin.py
-              # reads allowlists through _auth_env() -> the per-profile secret
-              # scope, and a scoped miss deliberately does NOT fall through to
-              # os.environ (upstream issue #72348: falling through would leak
-              # one profile's allowlist into another). MATRIX_* is not in
-              # secret_scope._GLOBAL_ENV_EXACT/_PREFIXES, so a process env var
-              # set via extraEnv is INVISIBLE to authorization and every sender
-              # hits default-deny — the symptom is the bot answering a DM with
-              # a pairing code instead of a reply.
-              verbatim_dir="/hermes-profile-env/$profile"
-              if [ -d "$verbatim_dir" ]; then
-                for f in "$verbatim_dir"/*; do
-                  [ -f "$f" ] || continue
-                  key="${f##*/}"
-                  # Single-line values only; strip any trailing newline so the
-                  # value is not silently corrupted.
-                  printf '%s=%s\n' "$key" "$(tr -d '\r\n' < "$f")" >> "$env_file"
-                done
-                echo "seeded verbatim env for profile: $profile"
-              fi
-            done
-
-            # The DEFAULT profile is not in the hermes-profiles ConfigMap (it
-            # has no SOUL.md/config.yaml of its own), so the loop above never
-            # visits it — but it still runs a gateway and still needs its own
-            # Matrix credential.
-            #
-            # Its home is the Hermes root, and /opt/data/.env is pre-existing
-            # unmanaged state on the PVC holding API_SERVER_KEY and terminal
-            # settings. So APPEND idempotently rather than truncating: drop any
-            # previously-seeded MATRIX_ lines, then re-add the current ones.
-            default_env_dir=/hermes-profile-env/default
-            if [ -d "$default_env_dir" ]; then
-              root_env=/opt/data/.env
-              touch "$root_env"
-              # Remove only keys we manage; everything else is preserved.
-              grep -vE '^(MATRIX_|CLAUDE_CODE_OAUTH_TOKEN=|GOOGLE_API_KEY=)' \
-                "$root_env" > "$root_env.tmp" 2>/dev/null || : > "$root_env.tmp"
-              mv "$root_env.tmp" "$root_env"
-              for f in "$default_env_dir"/*; do
-                [ -f "$f" ] || continue
-                key="${f##*/}"
-                printf '%s=%s\n' "$key" "$(tr -d '\r\n' < "$f")" >> "$root_env"
-              done
-              chmod 600 "$root_env"
-              echo "seeded verbatim env for profile: default"
-            fi
-
-            # Matrix crypto-store reset on device rotation.
-            #
-            # crypto.db binds the olm identity to ONE device_id. Rotating
-            # MATRIX_ACCESS_TOKEN issues a NEW device_id, but the store still
-            # holds the OLD identity, so the adapter runs as a device whose
-            # keys peers cannot use: no Olm session is ever established and
-            # every encrypted message fails with "Failed to decrypt megolm
-            # event: no session with given ID" while the pod looks healthy and
-            # Flux reports Ready. That is exactly how @hermes went silent in
-            # encrypted rooms on 2026-09-06 — including DMs, which only
-            # appeared to work beforehand because that room was unencrypted
-            # until the user turned encryption on.
-            #
-            # Detection is the store itself, not a marker file: SQLite stores
-            # TEXT inline, so the live device_id appears verbatim in crypto.db.
-            # If the CONFIGURED device_id is absent from the store, the store
-            # predates the current credential and is discarded. A store that
-            # already matches is left untouched, which makes this safe on
-            # first run and for profiles that were never rotated — verified
-            # against both live stores before shipping.
-            #
-            # Cost of a reset: previously-received room keys are lost, so
-            # messages sent BEFORE the rotation stay unreadable. New traffic
-            # works, because the fresh device negotiates new Olm sessions.
-            reset_stale_crypto_store() {
-              home_dir=$1
-              env_dir=$2
-              store="$home_dir/platforms/matrix/store"
-              [ -f "$env_dir/MATRIX_DEVICE_ID" ] || return 0
-              [ -f "$store/crypto.db" ] || return 0
-              want=$(tr -d '\r\n' < "$env_dir/MATRIX_DEVICE_ID")
-              [ -n "$want" ] || return 0
-              if grep -qa "$want" "$store/crypto.db"; then
-                echo "matrix crypto store current for $home_dir (device $want)"
-              else
-                rm -rf "$store"
-                echo "matrix crypto store RESET for $home_dir (configured device $want absent)"
-              fi
-            }
-
-            for profile in $profiles; do
-              reset_stale_crypto_store "/opt/data/profiles/$profile" \
-                "/hermes-profile-env/$profile"
-            done
-            reset_stale_crypto_store /opt/data /hermes-profile-env/default
-
-            # Honcho memory config, written ONCE at the Hermes root rather
-            # than per profile. The plugin resolves $HERMES_HOME/honcho.json
-            # first and falls back to the root file, so every profile —
-            # including ones created later at runtime — picks this up without
-            # needing its own copy. Each profile still gets an isolated AI
-            # peer (hermes_<profile>) while sharing the workspace, so they
-            # share one view of the user but keep separate self-models.
+            # Honcho memory config. This profile is the only one in this pod,
+            # so the file goes at the Hermes root. peerName is shared with the
+            # homelab-expert release so both agents see one view of the user,
+            # while each keeps its own AI peer and therefore its own
+            # self-model.
             #
             # apiKey lives at the top level: the plugin only substitutes its
             # "local" placeholder for loopback/RFC1918 URLs, and a cluster DNS
@@ -354,31 +153,50 @@ spec:
             EOF
             chmod 600 /opt/data/honcho.json
             echo "seeded honcho.json"
+
+            # Matrix crypto-store reset on device rotation.
+            #
+            # crypto.db binds the olm identity to ONE device_id. Rotating
+            # MATRIX_ACCESS_TOKEN issues a NEW device_id while the store still
+            # holds the OLD identity, so the adapter runs as a device whose
+            # keys peers cannot use: no Olm session is established and every
+            # encrypted message fails with "Failed to decrypt megolm event: no
+            # session with given ID" while the pod looks healthy and Flux
+            # reports Ready.
+            #
+            # Detection reads the store itself rather than a marker file:
+            # SQLite stores TEXT inline, so the live device_id appears
+            # verbatim in crypto.db. A store that already matches is left
+            # alone, which makes this a no-op on first run and for
+            # never-rotated deployments.
+            #
+            # Cost of a reset: previously-received room keys are lost, so
+            # messages sent BEFORE the rotation stay unreadable. New traffic
+            # works, because the fresh device negotiates new Olm sessions.
+            store=/opt/data/platforms/matrix/store
+            want="${MATRIX_DEVICE_ID:-}"
+            if [ -n "$want" ] && [ -f "$store/crypto.db" ]; then
+              if grep -qa "$want" "$store/crypto.db"; then
+                echo "matrix crypto store current (device $want)"
+              else
+                rm -rf "$store"
+                echo "matrix crypto store RESET (configured device $want absent)"
+              fi
+            fi
+        env:
+          # Read by the crypto-store check above. Safe in the process env:
+          # this pod hosts a single profile, so there is no second profile to
+          # leak it to and no scoped-lookup subtlety.
+          - name: MATRIX_DEVICE_ID
+            valueFrom:
+              secretKeyRef:
+                name: hermes-matrix-secrets-default
+                key: MATRIX_DEVICE_ID
         volumeMounts:
           - name: data
             mountPath: /opt/data
-          - name: hermes-profiles
-            mountPath: /hermes-profiles
-            readOnly: true
-          - name: infra-expert-secrets
-            mountPath: /hermes-profile-secrets/infra-expert
-            readOnly: true
           - name: honcho-client-secrets
             mountPath: /honcho-client-secrets
-            readOnly: true
-          # Matrix settings, written VERBATIM into the profile .env (see the
-          # verbatim block in the script above). Mounted as files so each key
-          # becomes one .env line.
-          - name: infra-expert-env
-            mountPath: /hermes-profile-env/infra-expert
-            readOnly: true
-          # Default-profile credentials (@hermes:kalitsune.net). A SEPARATE
-          # Matrix credential is mandatory, not cosmetic: the gateway refuses
-          # to run two profiles on one Matrix token ("refusing to start the
-          # duplicate — one credential cannot be consumed twice"), and the
-          # loser's adapter never starts.
-          - name: default-env
-            mountPath: /hermes-profile-env/default
             readOnly: true
 
     extraVolumeMounts:
@@ -411,33 +229,9 @@ spec:
       - name: HASS_URL
         value: "http://192.168.1.164"
 
-      # The ONE Matrix variable that belongs in the process env.
-      #
-      # _get_matrix_recovery_key_output_target() reads this with a bare
-      # os.getenv + Path.exists(), unlike _scoped_recovery_key() which is
-      # scope-aware. Under multiplexing one gateway process hosts both
-      # profiles, so os.environ mirrors the DEFAULT profile's .env and a
-      # value placed in infra-expert's own .env is invisible here (it logged
-      # "MATRIX_RECOVERY_KEY_OUTPUT_FILE is not configured" while holding the
-      # key in its scoped env).
-      #
-      # Safe to share: the default profile carries MATRIX_RECOVERY_KEY, so it
-      # takes the verify_with_recovery_key() branch and never reaches the
-      # bootstrap path that reads this. Only infra-expert consumes it, once,
-      # to write its generated key. Not a credential and not required_env for
-      # any platform, so it cannot trip the duplicate-credential guard.
-      #
-      # Promote the written key into that profile's MATRIX_RECOVERY_KEY, then
-      # this can go away.
-      - name: MATRIX_RECOVERY_KEY_OUTPUT_FILE
-        value: "/opt/data/export/matrix-recovery-infra-expert.txt"
-
-      # Threading policy for GROUP rooms. Both are read with a bare
-      # os.getenv() (adapter.py _auto_thread / _matrix_session_scope), not
-      # through the per-profile secret scope, so the process env is the
-      # correct home and one setting covers both profiles. Neither is a
-      # credential nor required_env, so they cannot trip the
-      # duplicate-credential guard that forced MATRIX_* out of here.
+      # Threading policy for GROUP rooms. Read with a bare os.getenv()
+      # (adapter.py _auto_thread / _matrix_session_scope), so the process env
+      # is the correct home.
       #
       # Default behaviour was: every group message the bot answers becomes a
       # NEW synthetic Matrix thread rooted at that message, so a room fills
@@ -458,14 +252,6 @@ spec:
       - name: MATRIX_SESSION_SCOPE
         value: "room"
 
-      # NOTE: MATRIX_* settings are deliberately NOT here.
-      #
-      # They live in matrix-secret.yaml and are written verbatim into the
-      # profile .env by seed-profiles. With gateway.multiplex_profiles on,
-      # gateway/authz_mixin.py resolves allowlists through the per-profile
-      # secret scope and a scoped miss does NOT fall back to os.environ, so a
-      # value set here would be invisible to authorization and every sender
-      # would be denied. See the Matrix section of README.md.
     extraContainers:
       - name: oauth2-proxy
         image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
@@ -575,26 +361,14 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
-      # hermes-matrix-secrets is deliberately NOT mounted here.
-      #
-      # extraEnvFrom injects into the PROCESS env, which every profile can
-      # read. The default profile has no secret scope installed, so it reads
-      # os.environ directly, saw MATRIX_ACCESS_TOKEN, configured matrix, and
-      # claimed the credential first — leaving:
-      #
-      #   ERROR gateway.run: Profile 'default' and 'infra-expert' both
-      #   configure matrix with the same credential — refusing to start the
-      #   duplicate (one credential cannot be consumed twice).
-      #
-      # The surviving adapter therefore belonged to `default`, whose .env has
-      # no MATRIX_ALLOWED_USERS, so every sender hit default-deny and got a
-      # pairing code. The bot still reacted to messages (lifecycle reactions
-      # are added on receipt, before authorization) and then went silent,
-      # which reads as "ghosting" rather than as an auth failure.
-      #
-      # Keeping the token out of the process env is what makes the profile
-      # that actually owns the allowlist win. Each profile that needs Matrix
-      # gets its OWN account, token and Secret seeded into its own .env.
+      # Safe to mount directly now that this pod hosts ONE profile. Under
+      # multiplexing this had to stay out of the process env: the default
+      # profile read os.environ, claimed the credential first, and the gateway
+      # refused to start the second adapter ("one credential cannot be
+      # consumed twice") -- leaving the surviving adapter with no allowlist,
+      # so every sender got a pairing code instead of a reply.
+      - secretRef:
+          name: hermes-matrix-secrets-default
     controller:
       type: statefulset
     persistence:
