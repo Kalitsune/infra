@@ -90,6 +90,9 @@ spec:
       - name: hermes-matrix-secrets
         secret:
           secretName: hermes-matrix-secrets
+      - name: hermes-matrix-secrets-default
+        secret:
+          secretName: hermes-matrix-secrets-default
 
     extraInitContainers:
       # The Honcho memory plugin ships in the Hermes image, but its SDK
@@ -225,6 +228,31 @@ spec:
               fi
             done
 
+            # The DEFAULT profile is not in the hermes-profiles ConfigMap (it
+            # has no SOUL.md/config.yaml of its own), so the loop above never
+            # visits it — but it still runs a gateway and still needs its own
+            # Matrix credential.
+            #
+            # Its home is the Hermes root, and /opt/data/.env is pre-existing
+            # unmanaged state on the PVC holding API_SERVER_KEY and terminal
+            # settings. So APPEND idempotently rather than truncating: drop any
+            # previously-seeded MATRIX_ lines, then re-add the current ones.
+            default_env_dir=/hermes-profile-env/default
+            if [ -d "$default_env_dir" ]; then
+              root_env=/opt/data/.env
+              touch "$root_env"
+              # Remove only keys we manage; everything else is preserved.
+              grep -v '^MATRIX_' "$root_env" > "$root_env.tmp" 2>/dev/null || : > "$root_env.tmp"
+              mv "$root_env.tmp" "$root_env"
+              for f in "$default_env_dir"/*; do
+                [ -f "$f" ] || continue
+                key="${f##*/}"
+                printf '%s=%s\n' "$key" "$(tr -d '\r\n' < "$f")" >> "$root_env"
+              done
+              chmod 600 "$root_env"
+              echo "seeded verbatim env for profile: default"
+            fi
+
             # Honcho memory config, written ONCE at the Hermes root rather
             # than per profile. The plugin resolves $HERMES_HOME/honcho.json
             # first and falls back to the root file, so every profile —
@@ -269,6 +297,14 @@ spec:
           # becomes one .env line.
           - name: hermes-matrix-secrets
             mountPath: /hermes-profile-env/infra-expert
+            readOnly: true
+          # Default-profile Matrix account (@hermes:kalitsune.net). A SEPARATE
+          # credential is mandatory, not cosmetic: the gateway refuses to run
+          # two profiles on one Matrix token ("refusing to start the duplicate
+          # — one credential cannot be consumed twice"), and the loser's
+          # adapter never starts.
+          - name: hermes-matrix-secrets-default
+            mountPath: /hermes-profile-env/default
             readOnly: true
 
     extraVolumeMounts:
@@ -371,7 +407,7 @@ spec:
     #
     # generation 2: Matrix account renamed to @hermes-homelab-expert.
     podAnnotations:
-      kalitsune.net/env-generation: "3"
+      kalitsune.net/env-generation: "4"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
@@ -412,16 +448,26 @@ spec:
     extraEnvFrom:
       - secretRef:
           name: hermes-secrets
-      # Matrix access token for @hermes-expert:kalitsune.net.
+      # hermes-matrix-secrets is deliberately NOT mounted here.
       #
-      # Mounted globally rather than as a per-profile secret on purpose. The
-      # seed-profiles init container base64-ENCODES per-profile secret values
-      # into <profile>/.env, which is right for multi-line blobs like a
-      # kubeconfig but would corrupt a plain token — the adapter would read
-      # the base64 text and every Matrix request would 401. envFrom delivers
-      # the value verbatim.
-      - secretRef:
-          name: hermes-matrix-secrets
+      # extraEnvFrom injects into the PROCESS env, which every profile can
+      # read. The default profile has no secret scope installed, so it reads
+      # os.environ directly, saw MATRIX_ACCESS_TOKEN, configured matrix, and
+      # claimed the credential first — leaving:
+      #
+      #   ERROR gateway.run: Profile 'default' and 'infra-expert' both
+      #   configure matrix with the same credential — refusing to start the
+      #   duplicate (one credential cannot be consumed twice).
+      #
+      # The surviving adapter therefore belonged to `default`, whose .env has
+      # no MATRIX_ALLOWED_USERS, so every sender hit default-deny and got a
+      # pairing code. The bot still reacted to messages (lifecycle reactions
+      # are added on receipt, before authorization) and then went silent,
+      # which reads as "ghosting" rather than as an auth failure.
+      #
+      # Keeping the token out of the process env is what makes the profile
+      # that actually owns the allowlist win. Each profile that needs Matrix
+      # gets its OWN account, token and Secret seeded into its own .env.
     controller:
       type: statefulset
     persistence:
