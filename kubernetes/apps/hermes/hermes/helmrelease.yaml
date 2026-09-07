@@ -319,8 +319,15 @@ spec:
     #   never delivered room keys. A new token yields a fresh device ID with no
     #   cached history on any peer client; the init container discards the
     #   now-stale crypto store in the same rollout.
+    # generation 12: added MATRIX_RECOVERY_KEY so cross-signing verification
+    #   runs on startup. The account already had master + self_signing keys on
+    #   the server, so the adapter's auto-bootstrap branch (`own_xsign is
+    #   None`) could never fire and the live device ewARoGIrN8 stayed unsigned
+    #   — Element showed "not verified by its owner" while E2EE itself worked.
+    #   With the key set, _scoped_recovery_key() resolves it and
+    #   verify_with_recovery_key() signs the device on the next start.
     podAnnotations:
-      kalitsune.net/env-generation: "11"
+      kalitsune.net/env-generation: "12"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
@@ -369,6 +376,14 @@ spec:
       # so every sender got a pairing code instead of a reply.
       - secretRef:
           name: hermes-matrix-secrets-default
+      # Cross-signing verification key, in its own Secret rather than merged
+      # into the one above. Adding a key to an existing SOPS file requires the
+      # age PRIVATE key to decrypt it first; encrypting a NEW file needs only
+      # the public recipient from .sops.yaml. Splitting it keeps the value
+      # encrypted at rest without a decrypt round-trip. envFrom merges both,
+      # so the process sees one flat environment either way.
+      - secretRef:
+          name: hermes-matrix-recovery
     controller:
       type: statefulset
     persistence:

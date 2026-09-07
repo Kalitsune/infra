@@ -5,6 +5,7 @@ resources:
   - helmrepository.yaml
   - ../secret.yaml
   - matrix-secret-default.yaml
+  - matrix-recovery-secret.yaml
   - honcho-client-secret.yaml
   - managed-configmap.yaml
   - helmrelease.yaml
