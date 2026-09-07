@@ -219,6 +219,18 @@ spec:
           name: hermes-secrets
       - secretRef:
           name: homelab-expert-matrix-secrets
+      # This account's own cross-signing key. Kept separate from the Secret
+      # above for the same reason as the sibling release: SOPS can encrypt a
+      # new file with the public recipient alone, but adding a key to an
+      # existing encrypted file needs the private key to decrypt it first.
+      #
+      # It must be THIS account's key, not @hermes'. The two are separate
+      # Matrix accounts with different self-signing keys, so the wrong one
+      # fails with "Key MAC does not match" (the case _scoped_recovery_key()
+      # documents). Both were verified against their own account's SSSS
+      # metadata before being committed.
+      - secretRef:
+          name: homelab-expert-matrix-recovery
 
     extraVolumes:
       # NOTE: this Secret is still named `hermes-infra-expert-secrets`.
@@ -418,5 +430,12 @@ spec:
     # rotated MATRIX_ACCESS_TOKEN. A Secret read via envFrom is injected ONCE
     # at container start; editing it does NOT roll a StatefulSet, so the
     # process keeps the OLD value while Flux reports Ready.
+    # generation 2: added MATRIX_RECOVERY_KEY (homelab-expert-matrix-recovery)
+    #   so cross-signing verification runs at startup. This account already had
+    #   master + self_signing keys on the server, so the adapter's auto-
+    #   bootstrap branch (`own_xsign is None`) never fired and the live device
+    #   stayed unsigned — Element showed "not verified by its owner" while E2EE
+    #   itself worked fine. Verified offline before commit: the key's MAC
+    #   matches this account's own SSSS metadata.
     podAnnotations:
-      kalitsune.net/env-generation: "1"
+      kalitsune.net/env-generation: "2"

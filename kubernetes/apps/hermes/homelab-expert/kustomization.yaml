@@ -4,5 +4,6 @@ resources:
   - ../secret.yaml
   - secret.yaml
   - matrix-secret.yaml
+  - matrix-recovery-secret.yaml
   - helmrelease.yaml
   - httproute.yaml
