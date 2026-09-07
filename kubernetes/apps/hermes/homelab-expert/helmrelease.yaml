@@ -112,26 +112,34 @@ spec:
 
         # Session secrets
 
-        All secrets are injected as **base64-encoded** environment variables from the profile `.env`. Always decode before use: `echo "$VAR" | base64 -d`.
+        Three credentials arrive as **base64-encoded** environment variables, seeded into `/opt/data/.env` by an init container. The names below are the Secret's own key names — not the conventional tool names. In particular the kubeconfig is `KUBE_CONFIG`, **not** `KUBECONFIG`.
 
-        - `GIT_SSH_KEY` — base64-encoded ed25519 deploy key for the infra repo.
-          ```sh
-          echo "$GIT_SSH_KEY" | base64 -d > /tmp/id_infra && chmod 600 /tmp/id_infra
-          export GIT_SSH_COMMAND="ssh -i /tmp/id_infra -o StrictHostKeyChecking=no"
-          ```
-        - `KUBECONFIG` — base64-encoded kubectl config granting cluster access.
-          ```sh
-          echo "$KUBECONFIG" | base64 -d > /tmp/kubeconfig
-          export KUBECONFIG=/tmp/kubeconfig
-          ```
-        - `INFRA_REPO` — base64-encoded URL of the infra git repository.
-          ```sh
-          REPO=$(echo "$INFRA_REPO" | base64 -d)
-          ```
+        ```sh
+        umask 077
+        printf '%s' "$GITHUB_DEPLOY_KEY" | base64 -d > /tmp/id_infra    # ed25519 deploy key, push-capable
+        printf '%s' "$KUBE_CONFIG"       | base64 -d > /tmp/kubeconfig  # cluster-admin
+        REPO=$(printf '%s' "$GITHUB_REPO" | base64 -d)                  # git@github.com:kalitsune/infra
+        chmod 600 /tmp/id_infra /tmp/kubeconfig
+        export KUBECONFIG=/tmp/kubeconfig
+        export GIT_SSH_COMMAND="ssh -i /tmp/id_infra -o StrictHostKeyChecking=no"
+        ```
+
+        They are multi-line blobs, which is why they are stored encoded — a bare shell variable truncates at the first newline. Decode into `/tmp`, never into the repo and never onto `/opt/data`: that volume is NFS and persists across restarts.
 
         # Runtime environment
 
-        You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into the bin folder (`~/.local/bin`), `chmod +x` it. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
+        Unprivileged user inside a Kubernetes pod: no root, no sudo, no package manager. `$HOME` is `/opt/data/home` on the NFS data volume and survives pod restarts; `/tmp` does not.
+
+        **No cluster tooling is preinstalled.** `kubectl`, `flux`, `helm`, `kustomize`, `sops`, `cilium`, `jq` and `yq` are all absent on a fresh pod — fetch static `linux/amd64` binaries into `~/.local/bin` and `chmod +x` them. That directory is **not** on the default `PATH`; export it. Only `git` and `curl` are already there. Never assume `apt`/`apk` exist or will succeed.
+
+        # What you cannot do
+
+        - **You cannot decrypt SOPS secrets.** The repo encrypts to an age key held by the operator; `SOPS_AGE_KEY_FILE` is set but points at a file that does not exist, so `sops -d` fails on every file under `kubernetes/`. Changing a secret *value* is the operator's job — say so instead of attempting it. Editing manifests that *reference* a secret is normal work.
+        - `tofu` and `talosctl` are absent by design — see AGENT.md.
+
+        # Editing this prompt
+
+        This text is `spec.values.soul.text` in `kubernetes/apps/hermes/homelab-expert/helmrelease.yaml`. Editing it rewrites the `homelab-expert-config` ConfigMap, whose checksum annotation rolls the StatefulSet — which terminates the session you are running in. Warn the operator before pushing such a change.
 
         # Style
 
@@ -235,6 +243,37 @@ spec:
         readOnly: true
 
     extraInitContainers:
+      # SOUL.md is this agent's system prompt, so git must win over whatever is
+      # on the data volume. The chart's own seed step runs with overwrite:false
+      # — right for config.yaml, which the agent rewrites at runtime, but fatal
+      # for the prompt: the file already exists after first boot, so the seed is
+      # skipped and an edited soul.text never lands. The ConfigMap checksum
+      # still rolls the pod, so the symptom is a restart that changes nothing.
+      # Copy unconditionally instead; config.yaml keeps the seed semantics.
+      - name: sync-soul
+        image: busybox:1.38
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            if [ ! -f /seed/SOUL.md ]; then
+              echo "no SOUL.md in ConfigMap, nothing to sync"
+              exit 0
+            fi
+            if cmp -s /seed/SOUL.md /opt/data/SOUL.md 2>/dev/null; then
+              echo "SOUL.md already current"
+            else
+              cp /seed/SOUL.md /opt/data/SOUL.md
+              echo "SOUL.md synced from ConfigMap"
+            fi
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+          - name: config
+            mountPath: /seed
+            readOnly: true
+
       # The Honcho memory plugin ships in the image but its SDK does not.
       # Hermes seals its own venv and redirects runtime installs to
       # HERMES_LAZY_INSTALL_TARGET on the data volume, which hermes_bootstrap
