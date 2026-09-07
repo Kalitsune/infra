@@ -350,13 +350,6 @@ spec:
             EOF
             chmod 600 /opt/data/honcho.json
             echo "seeded honcho.json"
-
-            # Clear the old `.no-bundled-skills` marker so all image-bundled
-            # skills load automatically. The marker was written by the previous
-            # init container that managed a curated symlink list; removing it
-            # lets Hermes merge the agent home and the image skill tree.
-            rm -f /opt/data/.no-bundled-skills
-            echo "cleared .no-bundled-skills (all bundled skills enabled)"
         volumeMounts:
           - name: data
             mountPath: /opt/data
