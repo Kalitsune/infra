@@ -146,6 +146,20 @@ spec:
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
+              # NET_BIND_SERVICE is required to EXECUTE the binary at all, not
+              # to bind a port. /usr/bin/turnserver carries this as a file
+              # capability, and execve() of a file with a permitted-set
+              # capability fails with EPERM when the bounding set is empty —
+              # the container dies with "Operation not permitted" before main()
+              # runs. Verified by bisection: drop:[ALL] alone gives rc=126,
+              # drop:[ALL] + add:[NET_BIND_SERVICE] gives rc=255 (the binary
+              # running and rejecting --help), and adding an unrelated
+              # capability instead stays at 126.
+              #
+              # It is not used for its actual purpose here: 3478, 5349 and the
+              # media range are all above 1024, so nothing needs privileged
+              # port binding.
+              add: ["NET_BIND_SERVICE"]
               drop: ["ALL"]
             readOnlyRootFilesystem: true
       volumes:
