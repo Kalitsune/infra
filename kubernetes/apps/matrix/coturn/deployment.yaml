@@ -51,12 +51,18 @@ spec:
         kalitsune.net/config-generation: "1"
     spec:
       # PodSecurity note: hostNetwork + hostPort cannot satisfy the
-      # `restricted` profile — that is inherent to a TURN relay, not an
-      # oversight. Everything that CAN be tightened is: non-root, all
-      # capabilities dropped, no privilege escalation, read-only rootfs,
-      # RuntimeDefault seccomp. The matrix namespace carries no PodSecurity
-      # enforce label, so this is admitted; adding `restricted` enforcement
-      # there later would reject this pod.
+      # `restricted` or `baseline` profiles — that is inherent to a TURN
+      # relay, not an oversight. Everything that CAN be tightened is:
+      # non-root, all capabilities dropped, no privilege escalation,
+      # read-only rootfs, RuntimeDefault seccomp.
+      #
+      # The cluster's DEFAULT level is `baseline` (from Talos's
+      # admission-control-config, not a namespace label), and baseline is
+      # exactly what forbids hostNetwork/hostPort. The matrix namespace
+      # therefore carries an explicit `privileged` enforce label — see
+      # ../continuwuity/namespace.yaml. Without it the ReplicaSet is admitted
+      # but every pod creation is rejected, so the Deployment reports
+      # ReplicaFailure/FailedCreate and no pod ever appears.
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
 

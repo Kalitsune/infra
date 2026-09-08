@@ -2,3 +2,29 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: matrix
+  labels:
+    # The cluster's default Pod Security level is `baseline` (set by Talos in
+    # the apiserver's admission-control-config, not by a namespace label).
+    # baseline forbids hostNetwork and hostPort, so without this label the
+    # coturn ReplicaSet is admitted but every pod creation is rejected: the
+    # Deployment sits at ReplicaFailure/FailedCreate and no pod ever appears.
+    #
+    # coturn needs both. A TURN relay allocates media across ~15000 UDP ports,
+    # which a Service cannot enumerate, so it binds the node's network
+    # directly. See ../coturn/README.md for why that is not avoidable.
+    #
+    # `privileged` is the only level that permits hostNetwork — baseline is
+    # not a middle ground here, it is precisely what rejects it. This matches
+    # what the other host-networked apps in this cluster do
+    # (democratic-csi, local-path-provisioner).
+    #
+    # The namespace level is not the security boundary; the workload is.
+    # coturn runs non-root (65534), drops ALL capabilities, forbids privilege
+    # escalation, uses a read-only root filesystem and RuntimeDefault
+    # seccomp, and continuwuity alongside it needs none of these relaxations.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    # Keep the strict profile visible as a warning, so anything added here
+    # later is still told when it could have been `restricted`.
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
