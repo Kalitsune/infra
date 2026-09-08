@@ -76,6 +76,15 @@ spec:
         default: claude-opus-5
       agent:
         reasoning_effort: max
+      # Enables the inbound A2A server. The adapter also honours A2A_PORT from
+      # the env above; this is the declarative half that makes the platform
+      # load at all.
+      gateway:
+        platforms:
+          a2a:
+            enabled: true
+            extra:
+              port: 9900
       toolsets:
         - terminal
         - file
@@ -174,6 +183,48 @@ spec:
       OPENAI_API_KEY: ""
 
     extraEnv:
+      # --- A2A inbound (this agent is the callable specialist) ---
+      #
+      # Direction is deliberate: hermes dispatches TO here. This release runs
+      # the inbound server; it is not given the outbound client tools, so it
+      # can answer a task but cannot initiate one. That keeps the delegation
+      # graph acyclic by construction rather than by turn-cap alone.
+      - name: A2A_PORT
+        value: "9900"
+      # Binds beyond loopback ONLY because a token is configured
+      # (A2A_PEER_TOKENS, via the homelab-expert-a2a Secret). Without one the
+      # adapter ignores this and pins 127.0.0.1 — deliberate, see
+      # security.resolve_bind_host().
+      - name: A2A_HOST
+        value: "0.0.0.0"
+      - name: A2A_AGENT_NAME
+        value: "homelab-expert"
+      - name: A2A_AGENT_DESCRIPTION
+        value: >-
+          Kubernetes and GitOps specialist for the kalitsune homelab. Deploys,
+          diagnoses and repairs cluster workloads by committing to the infra
+          repo and letting Flux converge.
+      - name: A2A_PUBLIC_URL
+        value: "http://homelab-expert.hermes.svc.cluster.local:9900"
+
+      # Only this identity may run tasks. The name matches the left-hand side
+      # of A2A_PEER_TOKENS, i.e. an authenticated peer-token name.
+      - name: A2A_TRUSTED_PEERS
+        value: "hermes"
+
+      # What the Agent Card advertises. NOT the full toolset: this agent holds
+      # a cluster-admin kubeconfig and a push-capable deploy key, so it does
+      # not advertise `terminal`, `coding`, `code_execution` or `file` to
+      # peers. Inbound text is already framed as untrusted and stripped of
+      # slash commands, but advertising less is the cheaper guarantee.
+      - name: A2A_ADVERTISED_TOOLSETS
+        value: "search,web,debugging,todo"
+
+      # Anti-loop cap per context. Belt and braces given the one-directional
+      # design above.
+      - name: A2A_MAX_PINGPONG_TURNS
+        value: "5"
+
       - name: HASS_URL
         value: "http://192.168.1.164"
 
@@ -231,6 +282,13 @@ spec:
       # metadata before being committed.
       - secretRef:
           name: homelab-expert-matrix-recovery
+
+      # Inbound A2A credential. A2A_PEER_TOKENS maps a presented token to an
+      # authenticated identity ("hermes"), and that authenticated name — never
+      # anything the request body claims — is what rate limiting, the trust
+      # gate and the audit log key on.
+      - secretRef:
+          name: homelab-expert-a2a
 
     extraVolumes:
       # NOTE: this Secret is still named `hermes-infra-expert-secrets`.
@@ -378,6 +436,13 @@ spec:
         - name: oauth2-proxy
           port: 4180
           targetPort: 4180
+        # A2A inbound. Deliberately NOT routed through the HTTPRoute or
+        # oauth2-proxy: this is a cluster-internal, token-authenticated
+        # machine interface, not a browser surface. Reachable only as
+        # homelab-expert.hermes.svc.cluster.local:9900.
+        - name: a2a
+          port: 9900
+          targetPort: 9900
 
     extraContainers:
       - name: oauth2-proxy
@@ -437,5 +502,7 @@ spec:
     #   stayed unsigned — Element showed "not verified by its owner" while E2EE
     #   itself worked fine. Verified offline before commit: the key's MAC
     #   matches this account's own SSSS metadata.
+    # generation 3: enabled inbound A2A (homelab-expert-a2a Secret, port 9900,
+    #   restricted advertised toolsets) so hermes can dispatch tasks here.
     podAnnotations:
-      kalitsune.net/env-generation: "2"
+      kalitsune.net/env-generation: "3"
