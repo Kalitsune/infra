@@ -1,0 +1,102 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coturn-config
+  namespace: matrix
+data:
+  # coturn's config file. Rendered verbatim into /etc/coturn/turnserver.conf.
+  #
+  # Reference: https://continuwuity.org/calls/turn
+  # Hardening follows the Synapse TURN guide that page defers to:
+  # https://element-hq.github.io/synapse/latest/turn-howto.html
+  turnserver.conf: |
+    # ------------------------------------------------------------ identity
+    # The realm must match the host clients are told to dial, which is what
+    # continuwuity advertises in turn_uris.
+    realm=turn.kalitsune.net
+
+    # Time-limited credentials derived from a shared secret. continuwuity
+    # signs a username/password pair per client using the SAME secret
+    # (CONTINUWUITY_TURN_SECRET), so no per-user accounts exist here.
+    # The secret itself is NOT in this ConfigMap — it is appended at startup
+    # from the mounted Secret, see the StatefulSet's init step.
+    use-auth-secret
+
+    # ------------------------------------------------------------- listeners
+    listening-port=3478
+    tls-listening-port=5349
+
+    # NAT: the pod binds the worker's private address, but the relay
+    # candidates it hands to clients must be the PUBLIC address or remote
+    # peers will try to reach 192.168.1.171 and fail.
+    #
+    # `external-ip=PUBLIC/PRIVATE` tells coturn to listen on the private
+    # address and advertise the public one. This value is the WAN IP at the
+    # time of writing; AGENT.md notes the connection periodically drops to a
+    # 4G modem and the public IP changes with it. If external calls start
+    # failing after a WAN flip, THIS LINE is why — it must be updated, or the
+    # deployment moved to a dynamic-DNS-aware wrapper.
+    external-ip=82.64.31.214/192.168.1.171
+
+    # Media relay range. Chosen to sit above LiveKit's default 50100-50200 so
+    # MatrixRTC group calls can be added later without a port collision, as
+    # the continuwuity docs recommend. Every port in this range must be
+    # forwarded on the router or relaying silently fails for external peers.
+    min-port=50201
+    max-port=65535
+
+    # ------------------------------------------------------------------ TLS
+    # turns:// on 5349. Uses the same Let's Encrypt wildcard the gateway
+    # serves, issued into this namespace as its own Certificate.
+    cert=/etc/coturn/tls/tls.crt
+    pkey=/etc/coturn/tls/tls.key
+
+    # ------------------------------------------------------------- security
+    #
+    # A TURN server relays UDP to wherever the client asks. Without the
+    # denials below it becomes a way to reach services inside the LAN — and
+    # the cluster itself — from the public internet. These are not optional.
+
+    # VoIP is UDP. There is no reason to let a relay open arbitrary TCP.
+    no-tcp-relay
+
+    # Block the RFC1918 space this cluster and the home LAN live in.
+    denied-peer-ip=10.0.0.0-10.255.255.255
+    denied-peer-ip=172.16.0.0-172.31.255.255
+    denied-peer-ip=192.168.0.0-192.168.255.255
+
+    # Block loopback, link-local, CGNAT and the various special-use ranges.
+    denied-peer-ip=0.0.0.0-0.255.255.255
+    denied-peer-ip=100.64.0.0-100.127.255.255
+    denied-peer-ip=127.0.0.0-127.255.255.255
+    denied-peer-ip=169.254.0.0-169.254.255.255
+    denied-peer-ip=192.0.0.0-192.0.0.255
+    denied-peer-ip=192.0.2.0-192.0.2.255
+    denied-peer-ip=192.88.99.0-192.88.99.255
+    denied-peer-ip=198.18.0.0-198.19.255.255
+    denied-peer-ip=198.51.100.0-198.51.100.255
+    denied-peer-ip=203.0.113.0-203.0.113.255
+    denied-peer-ip=240.0.0.0-255.255.255.255
+    no-multicast-peers
+
+    # IPv6 equivalents of the above.
+    denied-peer-ip=::1
+    denied-peer-ip=64:ff9b::-64:ff9b::ffff:ffff
+    denied-peer-ip=::ffff:0.0.0.0-::ffff:255.255.255.255
+    denied-peer-ip=100::-100::ffff:ffff:ffff:ffff
+    denied-peer-ip=2001::-2001:1ff:ffff:ffff:ffff:ffff:ffff:ffff
+    denied-peer-ip=2002::-2002:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+    denied-peer-ip=fc00::-fdff:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+    denied-peer-ip=fe80::-febf:ffff:ffff:ffff:ffff:ffff:ffff:ffff
+
+    # Quotas — bound the damage if credentials leak. 4 streams per video
+    # call, so 12 = 3 simultaneous relayed calls per user.
+    user-quota=12
+    total-quota=1200
+
+    # No CLI listener; nothing should be administering this at runtime.
+    no-cli
+
+    # Quieter logs. coturn logs every allocation at default verbosity.
+    log-file=stdout
+    simple-log

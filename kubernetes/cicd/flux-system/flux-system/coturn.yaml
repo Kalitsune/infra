@@ -1,0 +1,25 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: coturn
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./kubernetes/apps/matrix/coturn
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    # The matrix namespace is created by the continuwuity app, and the shared
+    # TURN secret is only meaningful once the homeserver is handing it out.
+    - name: continuwuity
+    # turns:// needs a certificate for turn.kalitsune.net, issued by the
+    # letsencrypt-prod ClusterIssuer.
+    - name: cluster-issuer
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m

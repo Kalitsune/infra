@@ -188,3 +188,29 @@ data:
   CONTINUWUITY_LOG: info
   # No TTY on stdout; ANSI escapes would just be noise in `kubectl logs`.
   CONTINUWUITY_LOG_COLORS: "false"
+
+  # ------------------------------------------------------------------ voice
+  #
+  # Continuwuity does not relay media itself. It mints time-limited TURN
+  # credentials, signed with a secret shared with coturn, and clients then
+  # talk to coturn directly. See kubernetes/apps/matrix/coturn/.
+  #
+  # These URIs are what clients dial, so they must resolve PUBLICLY:
+  # turn.kalitsune.net has to point at the WAN address, and the router has to
+  # forward 3478 (UDP+TCP), 5349 (TCP) and the media range 50201-65535 (UDP)
+  # to the worker node. Until that is true, calls between two devices on the
+  # LAN may still work while anything crossing the internet fails.
+  #
+  # Per MSC4166, an empty turn_uris makes /_matrix/client/v3/voip/turnServer
+  # return 404 — so a 404 there means these keys are missing, not that the
+  # relay is down.
+  # Single line deliberately: a YAML folded scalar (>-) inserts newlines into
+  # the value, and this is parsed as a TOML array, not free text.
+  CONTINUWUITY_TURN_URIS: '["turn:turn.kalitsune.net:3478?transport=udp", "turn:turn.kalitsune.net:3478?transport=tcp", "turns:turn.kalitsune.net:5349?transport=tcp"]'
+
+  # 24h, the upstream default. Credentials are derived, not stored, so this
+  # only bounds how long a leaked pair stays usable.
+  CONTINUWUITY_TURN_TTL: "86400"
+
+  # CONTINUWUITY_TURN_SECRET is deliberately absent here — it lives in the
+  # continuwuity-turn Secret and must match coturn's static-auth-secret.

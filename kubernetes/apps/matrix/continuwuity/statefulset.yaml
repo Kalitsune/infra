@@ -121,6 +121,12 @@ spec:
             # an absent one, which can fail config parsing at startup.
             - secretRef:
                 name: continuwuity-oidc
+            # Shared TURN secret (CONTINUWUITY_TURN_SECRET). Paired with the
+            # CONTINUWUITY_TURN_URIS / _TTL keys in the ConfigMap: the secret
+            # alone would create a turn config that mints credentials for a
+            # relay clients are never told about.
+            - secretRef:
+                name: continuwuity-turn
           ports:
             - name: http
               containerPort: 8008

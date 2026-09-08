@@ -1,0 +1,158 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: coturn-tls
+  namespace: matrix
+spec:
+  # turns:// on 5349 needs a real certificate for the realm hostname.
+  # The gateway's wildcard already covers *.kalitsune.net, but that Secret
+  # lives in envoy-gateway-system and Kubernetes does not share Secrets
+  # across namespaces — so this issues its own copy into matrix/.
+  secretName: coturn-tls
+  dnsNames:
+    - "turn.kalitsune.net"
+  issuerRef:
+    name: letsencrypt-prod
+    kind: ClusterIssuer
+---
+# NOTE: there is deliberately NO Service here.
+#
+# A TURN relay allocates media ports across a wide dynamic range (50201-65535
+# below). A Kubernetes Service must enumerate every port it forwards, so that
+# range cannot be expressed as one — and a Service that carries only 3478/5349
+# would accept the control channel and then silently drop every relayed
+# stream, which looks like "calls connect then have no audio".
+#
+# hostNetwork is therefore the correct model, and is what coturn's own Docker
+# documentation recommends. The pod binds the worker node's ports directly;
+# the router forwards to that NODE address, not to a LoadBalancer VIP.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: coturn
+  namespace: matrix
+spec:
+  replicas: 1
+  strategy:
+    # hostNetwork means the ports are a node-level singleton: two pods cannot
+    # bind 3478 on the same node. RollingUpdate would start the new pod while
+    # the old one still holds the port, and it would crash-loop on EADDRINUSE.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: coturn
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: coturn
+      annotations:
+        # Roll when the config or shared secret changes; neither is re-read
+        # after start.
+        kalitsune.net/config-generation: "1"
+    spec:
+      # PodSecurity note: hostNetwork + hostPort cannot satisfy the
+      # `restricted` profile — that is inherent to a TURN relay, not an
+      # oversight. Everything that CAN be tightened is: non-root, all
+      # capabilities dropped, no privilege escalation, read-only rootfs,
+      # RuntimeDefault seccomp. The matrix namespace carries no PodSecurity
+      # enforce label, so this is admitted; adding `restricted` enforcement
+      # there later would reject this pod.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      # Pin to the worker. The control plane is tainted, but naming the node
+      # explicitly also keeps the address stable: the router port-forward
+      # targets one IP, and a reschedule to a different node would break every
+      # external call until the forward was repointed.
+      nodeSelector:
+        kubernetes.io/hostname: talos-192-168-1-171
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      initContainers:
+        # The shared secret must not sit in the ConfigMap, and coturn's config
+        # file has no env-var interpolation. So the config is assembled at
+        # startup: static file + one secret line, into an emptyDir visible
+        # only to this pod.
+        - name: assemble-config
+          image: busybox:1.38
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              cp /config/turnserver.conf /run/coturn/turnserver.conf
+              printf 'static-auth-secret=%s\n' "$(cat /secret/static-auth-secret)" \
+                >> /run/coturn/turnserver.conf
+              chmod 600 /run/coturn/turnserver.conf
+              echo "assembled turnserver.conf ($(wc -l < /run/coturn/turnserver.conf) lines)"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secret
+              mountPath: /secret
+              readOnly: true
+            - name: runtime-config
+              mountPath: /run/coturn
+      containers:
+        - name: coturn
+          image: docker.io/coturn/coturn:4.6.2-r2
+          args:
+            - -c
+            - /run/coturn/turnserver.conf
+          ports:
+            - name: turn-udp
+              containerPort: 3478
+              hostPort: 3478
+              protocol: UDP
+            - name: turn-tcp
+              containerPort: 3478
+              hostPort: 3478
+              protocol: TCP
+            - name: turns-tcp
+              containerPort: 5349
+              hostPort: 5349
+              protocol: TCP
+          volumeMounts:
+            - name: runtime-config
+              mountPath: /run/coturn
+              readOnly: true
+            - name: tls
+              mountPath: /etc/coturn/tls
+              readOnly: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: config
+          configMap:
+            name: coturn-config
+        - name: secret
+          secret:
+            secretName: coturn-secret
+            defaultMode: 0400
+        - name: tls
+          secret:
+            secretName: coturn-tls
+            defaultMode: 0400
+        - name: runtime-config
+          emptyDir: {}

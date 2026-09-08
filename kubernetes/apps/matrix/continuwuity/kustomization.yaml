@@ -4,6 +4,9 @@ resources:
   - namespace.yaml
   - configmap.yaml
   - secret.yaml
+  # Shared TURN secret. Must match coturn's static-auth-secret — the two are
+  # generated together; see kubernetes/apps/matrix/coturn/.
+  - turn-secret.yaml
   # Client secret for OIDC delegation. Listed so it exists in the cluster
   # ahead of time; the StatefulSet does not consume it until the
   # CONTINUWUITY_OAUTH__OIDC__* keys in configmap.yaml are uncommented.
