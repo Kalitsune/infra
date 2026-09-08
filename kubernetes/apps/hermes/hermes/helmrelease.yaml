@@ -65,6 +65,41 @@ spec:
       model:
         provider: anthropic
         default: claude-sonnet-5
+
+      # --- A2A dispatcher ---
+      #
+      # This agent is the front door: it talks to the operator, then delegates
+      # to specialists over A2A. It runs the OUTBOUND client only — no inbound
+      # server — so the delegation graph is a tree with this release at the
+      # root and cannot cycle.
+      #
+      # Peers are matched by capability, so adding a specialist is a config
+      # entry plus its own release; a2a_orchestrate(capability=...) then fans
+      # out to whatever advertises that capability without this block changing
+      # shape. The token for each peer is referenced as ${VAR} and supplied
+      # from a SOPS Secret via envFrom — never inlined here.
+      a2a_agents:
+        homelab-expert:
+          url: "http://homelab-expert.hermes.svc.cluster.local:9900"
+          auth:
+            type: bearer
+            token: "${env:A2A_TOKEN_HOMELAB_EXPERT}"
+          timeout: 300
+          capabilities:
+            - kubernetes
+            - gitops
+            - infra
+            - homelab
+        # Future specialists go here, each with its own release, its own
+        # token, and its own capability tags. Example shape for a peer on
+        # another machine (e.g. a laptop running its own Hermes) — it needs a
+        # routable URL and its own entry in the A2A token Secret:
+        #
+        # laptop:
+        #   url: "http://laptop.lan:9900"
+        #   auth: { type: bearer, token: "${A2A_TOKEN_LAPTOP}" }
+        #   timeout: 300
+        #   capabilities: [local, scratch]
       # Multiplexing is GONE. It previously hosted the infra-expert agent as a
       # second profile inside this process; that agent now runs as its own
       # release (../homelab-expert) with its own pod, PVC and credentials.
@@ -326,8 +361,10 @@ spec:
     #   — Element showed "not verified by its owner" while E2EE itself worked.
     #   With the key set, _scoped_recovery_key() resolves it and
     #   verify_with_recovery_key() signs the device on the next start.
+    # generation 13: added A2A outbound (hermes-a2a Secret + a2a_agents peer
+    #   config) so this agent can dispatch tasks to specialist agents.
     podAnnotations:
-      kalitsune.net/env-generation: "12"
+      kalitsune.net/env-generation: "13"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
@@ -384,6 +421,11 @@ spec:
       # so the process sees one flat environment either way.
       - secretRef:
           name: hermes-matrix-recovery
+      # Outbound A2A peer tokens, referenced from a2a_agents as
+      # ${env:A2A_TOKEN_*}. Kept in its own Secret so adding a specialist is a
+      # new key here plus a config entry, with no decrypt round-trip needed.
+      - secretRef:
+          name: hermes-a2a
     controller:
       type: statefulset
     persistence:

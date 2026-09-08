@@ -6,6 +6,7 @@ resources:
   - ../secret.yaml
   - matrix-secret-default.yaml
   - matrix-recovery-secret.yaml
+  - a2a-secret.yaml
   - honcho-client-secret.yaml
   - managed-configmap.yaml
   - helmrelease.yaml
