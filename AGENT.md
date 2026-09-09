@@ -250,6 +250,52 @@ surface instead of the hostname: gate account creation, keep directories and
 indexes unfederated, and give the host nothing behind it but the service
 itself. Write that reasoning into the route, not just the commit message.
 
+### DNS: one dynamic anchor, everything else a CNAME
+
+The public IP is dynamic — the home connection periodically fails over to a
+4G modem and comes back on a different address. The zone is therefore built
+so that **exactly one record ever holds an IP**:
+
+```
+lab.kalitsune.net        A      82.64.31.214   TTL 60   <- the only A record
+matrix.kalitsune.net     CNAME  lab.kalitsune.net
+id.kalitsune.net         CNAME  lab.kalitsune.net
+hermes.kalitsune.net     CNAME  lab.kalitsune.net
+turn.kalitsune.net       CNAME  lab.kalitsune.net
+*.lab.kalitsune.net      CNAME  lab.kalitsune.net
+*.hermes.kalitsune.net   CNAME  lab.kalitsune.net
+```
+
+A dynamic-DNS updater keeps `lab.kalitsune.net` current. Every other name
+inherits the change for free, so a WAN flip is one update instead of a dozen,
+and there is no window where some hostnames point at the old address.
+
+**So: a new externally-reachable hostname is a CNAME to `lab.kalitsune.net`,
+never a second A record.** An A record duplicates the source of truth and
+will silently rot the next time the WAN changes — it keeps resolving, just to
+an address nobody is listening on any more. Records that legitimately point
+elsewhere (`kalitsune.net` and `www` to Vercel, mail to Proton) are the
+exception and are not part of this scheme.
+
+Two things this does not cover:
+
+- **`proxied` must be `false`** for anything that is not plain HTTP(S).
+  Cloudflare's proxy only understands HTTP, so proxying a TURN, SMTP or
+  game-server record blackholes it. Match the sibling records — everything in
+  this zone is currently unproxied.
+- **An IP baked into a config file does not follow the CNAME.** coturn's
+  `external-ip` is the live example: DNS moves, that value does not, and the
+  symptom is calls connecting and then failing with no audio. When you must
+  hardcode an address, say so at the point of use and name
+  `dig +short lab.kalitsune.net` as the thing to compare against.
+
+DNS lives in Cloudflare, not in this repo, so a hostname change is not a
+GitOps change — nothing here reconciles it, and it takes effect immediately.
+`CLOUDFLARE_API_KEY` (in `hermes-infra-expert-secrets`) can read the zone and
+write records; note that it lacks the `user/tokens/verify` scope, so that
+endpoint returns `Invalid API Token` for a token that works fine against
+`/zones`. Probe `/zones` to test it instead.
+
 ### `kubernetes/cicd/flux-system/`
 
 This directory holds two very different things, and the rules differ.
