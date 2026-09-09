@@ -31,11 +31,18 @@ data:
     # peers will try to reach 192.168.1.171 and fail.
     #
     # `external-ip=PUBLIC/PRIVATE` tells coturn to listen on the private
-    # address and advertise the public one. This value is the WAN IP at the
-    # time of writing; AGENT.md notes the connection periodically drops to a
-    # 4G modem and the public IP changes with it. If external calls start
-    # failing after a WAN flip, THIS LINE is why — it must be updated, or the
-    # deployment moved to a dynamic-DNS-aware wrapper.
+    # address and advertise the public one.
+    #
+    # This IS a hardcoded WAN address, and that is a known weakness: the zone
+    # keeps lab.kalitsune.net as its single dynamic-DNS anchor (TTL 60) and
+    # every hostname CNAMEs to it, so DNS follows a WAN change automatically
+    # while this line does not. AGENT.md notes the connection periodically
+    # fails over to 4G, which changes the public IP.
+    #
+    # coturn resolves external-ip only at startup, so a hostname here would
+    # be no better. If calls start failing after a WAN flip, compare this
+    # against `dig +short lab.kalitsune.net` — a mismatch is the cause, and
+    # restarting the Deployment is not enough; this value must be updated.
     external-ip=82.64.31.214/192.168.1.171
 
     # Media relay range. Chosen to sit above LiveKit's default 50100-50200 so
