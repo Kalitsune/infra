@@ -49,5 +49,5 @@ spec:
         backendRequest: 3600s
         request: 3600s
       backendRefs:
-        - name: livekit
+        - name: livekit-signal
           port: 7880

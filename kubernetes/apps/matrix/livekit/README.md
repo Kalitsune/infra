@@ -36,7 +36,20 @@ Both services sit behind **one** hostname, `livekit.kalitsune.net`, split by
 path in `httproute.yaml`:
 
 - `/sfu/get`, `/get_token`, `/healthz` → `lk-jwt-service:8081`
-- everything else → `livekit:7880` (the signalling WebSocket)
+- everything else → `livekit-signal:7880` (the signalling WebSocket)
+
+The SFU's Service is called `livekit-signal`, **not** `livekit`, and that is
+load-bearing. Kubernetes injects a legacy Docker-link variable for every
+Service into every pod in the namespace, so a Service named `livekit` sets
+`LIVEKIT_PORT=tcp://<clusterIP>:7880` — which is also the env var
+`livekit-server` reads for its own `--port` flag. It refuses to start:
+
+```
+could not parse "tcp://10.96.96.93:7880" as uint value from
+environment variable "LIVEKIT_PORT" for flag port
+```
+
+The injection cannot be disabled per-pod, so the name is the only fix.
 
 Get that split wrong and Element Call asks the SFU for a token, gets a 404,
 and the call never starts.

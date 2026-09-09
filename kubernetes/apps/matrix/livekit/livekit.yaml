@@ -140,7 +140,19 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: livekit
+  # NOT named `livekit`. Kubernetes injects legacy Docker-link variables for
+  # every Service into every pod in the namespace, so a Service called
+  # `livekit` produces LIVEKIT_PORT=tcp://<clusterIP>:7880 — which collides
+  # with livekit-server's own --port flag ($LIVEKIT_PORT) and kills it at
+  # startup:
+  #
+  #   could not parse "tcp://10.96.96.93:7880" as uint value from
+  #   environment variable "LIVEKIT_PORT" for flag port
+  #
+  # The name is the only lever: the injection is unconditional and cannot be
+  # disabled per-pod. `livekit-signal` also describes what this actually
+  # carries, since media never passes through it.
+  name: livekit-signal
   namespace: matrix
 spec:
   type: ClusterIP
