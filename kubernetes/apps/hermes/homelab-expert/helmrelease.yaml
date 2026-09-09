@@ -270,18 +270,15 @@ spec:
           name: hermes-secrets
       - secretRef:
           name: homelab-expert-matrix-secrets
-      # This account's own cross-signing key. Kept separate from the Secret
-      # above for the same reason as the sibling release: SOPS can encrypt a
-      # new file with the public recipient alone, but adding a key to an
-      # existing encrypted file needs the private key to decrypt it first.
+      # MATRIX_RECOVERY_KEY now lives in the Secret above rather than in its
+      # own file. The agent originally had to split it out because it cannot
+      # decrypt SOPS (adding a key to an encrypted file needs the private
+      # key), but the operator holds that key and folded it back in — one
+      # Secret per identity is the better shape, so the workaround is gone.
       #
-      # It must be THIS account's key, not @hermes'. The two are separate
-      # Matrix accounts with different self-signing keys, so the wrong one
-      # fails with "Key MAC does not match" (the case _scoped_recovery_key()
-      # documents). Both were verified against their own account's SSSS
-      # metadata before being committed.
-      - secretRef:
-          name: homelab-expert-matrix-recovery
+      # It must be THIS account's key, not @hermes'. They are separate Matrix
+      # accounts with different self-signing keys, so the wrong one fails with
+      # "Key MAC does not match" (the case _scoped_recovery_key() documents).
 
       # Inbound A2A credential. A2A_PEER_TOKENS maps a presented token to an
       # authenticated identity ("hermes"), and that authenticated name — never
@@ -386,19 +383,30 @@ spec:
             # env var silently truncates at the first newline, so they are
             # stored encoded and decoded on use by bin/env.sh. The agent's
             # bootstrap script knows this convention.
+            # Rebuild the managed block from whatever keys the Secret
+            # actually carries, rather than a hardcoded list — a new key
+            # (CLOUDFLARE_API_KEY was added this way) then needs no edit
+            # here, and a REMOVED key does not linger as a stale line.
             env_file=/opt/data/.env
             touch "$env_file"
             chmod 600 "$env_file"
-            grep -vE '^(GITHUB_DEPLOY_KEY|GITHUB_REPO|KUBE_CONFIG)=' \
-              "$env_file" > "$env_file.tmp" 2>/dev/null || : > "$env_file.tmp"
-            mv "$env_file.tmp" "$env_file"
+            managed=""
+            for f in /infra-secrets/*; do
+              [ -f "$f" ] || continue
+              managed="${managed}${managed:+|}${f##*/}"
+            done
+            if [ -n "$managed" ]; then
+              grep -vE "^($managed)=" \
+                "$env_file" > "$env_file.tmp" 2>/dev/null || : > "$env_file.tmp"
+              mv "$env_file.tmp" "$env_file"
+            fi
             for f in /infra-secrets/*; do
               [ -f "$f" ] || continue
               key="${f##*/}"
               printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
             done
             chmod 600 "$env_file"
-            echo "seeded infra credentials into $env_file"
+            echo "seeded infra credentials into $env_file ($(echo "$managed" | tr '|' ' '))"
 
             # Honcho memory config. Written at the Hermes root because this
             # profile IS the root profile here. peerName is shared with the
