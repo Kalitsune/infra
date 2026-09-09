@@ -58,7 +58,12 @@ spec:
         # same commit as a config edit is what actually applies that edit.
         #
         # generation 3: OIDC delegation to Pocket ID enabled.
-        kalitsune.net/config-generation: "3"
+        # generation 4: TURN (coturn) + MatrixRTC foci (LiveKit) added. Proof
+        #   this annotation matters: the RTC keys were committed without a bump,
+        #   Flux updated the ConfigMap, the pod kept its old environment, and
+        #   /rtc/transports still returned an empty list — Element continued to
+        #   report MISSING_MATRIX_RTC_TRANSPORT against a correct config.
+        kalitsune.net/config-generation: "4"
       labels:
         app.kubernetes.io/name: continuwuity
     spec:
