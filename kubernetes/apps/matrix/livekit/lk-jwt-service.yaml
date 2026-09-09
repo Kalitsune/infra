@@ -31,14 +31,18 @@ spec:
           type: RuntimeDefault
       containers:
         - name: lk-jwt-service
-          image: ghcr.io/element-hq/lk-jwt-service:0.2.3
+          image: ghcr.io/element-hq/lk-jwt-service:0.4.1
           env:
-            # This image reads LIVEKIT_JWT_PORT, not LIVEKIT_JWT_BIND — its
-            # own startup log prints "LIVEKIT_JWT_PORT: 8080". Setting BIND
-            # was silently ignored, so it listened on 8080 while the Service
-            # and probe targeted 8081 and readiness never passed.
-            - name: LIVEKIT_JWT_PORT
-              value: "8080"
+            # 0.4.x reintroduced LIVEKIT_JWT_BIND as the preferred form and
+            # made it mutually exclusive with the deprecated LIVEKIT_JWT_PORT
+            # — setting both makes the service refuse to start. BIND is the
+            # one to keep.
+            #
+            # (0.2.3 ignored BIND entirely and silently listened on its
+            # default 8080, which is why an earlier revision here pinned the
+            # PORT variable instead.)
+            - name: LIVEKIT_JWT_BIND
+              value: ":8080"
             # The URL clients are told to connect to — public and wss://,
             # not the in-cluster Service. This value is handed to the client
             # inside the JWT response, so it must be routable from a browser.
