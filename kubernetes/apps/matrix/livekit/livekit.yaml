@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: livekit-config
+  namespace: matrix
+data:
+  # LiveKit SFU config. Keys are NOT here — they arrive via LIVEKIT_KEYS from
+  # the livekit-keys Secret, which livekit-server merges into this map.
+  #
+  # Reference: https://continuwuity.org/calls/livekit
+  livekit.yaml: |
+    # Signalling / HTTP. Fronted by Envoy on livekit.kalitsune.net, so it only
+    # ever sees proxied traffic — but this pod is hostNetwork, so the port is
+    # open on the node too. Nothing outside forwards to it.
+    port: 7880
+    bind_addresses:
+      - ""
+
+    rtc:
+      # TCP fallback for clients that cannot do UDP at all.
+      tcp_port: 7881
+
+      # Media range. Deliberately 50100-50200, matching the LiveKit default
+      # the continuwuity docs assume — coturn's range starts at 50201
+      # specifically to leave this window free, so the two never collide.
+      port_range_start: 50100
+      port_range_end: 50200
+
+      # The pod sees a private address; peers must be told the public one.
+      # use_external_ip makes LiveKit discover it via STUN at startup rather
+      # than hardcoding it, which is strictly better than coturn's
+      # external-ip: a WAN failover is picked up on restart instead of
+      # requiring a config edit.
+      use_external_ip: true
+
+      # Never advertise 127.0.0.1 as a candidate.
+      enable_loopback_candidate: false
+
+    # Matrix creates rooms explicitly through lk-jwt-service. Auto-creation
+    # would let anyone with a valid JWT spin up arbitrary rooms.
+    room:
+      auto_create: false
+
+    # Redis is not configured: this is a single-node SFU. Adding a second
+    # replica REQUIRES redis for room state, so scaling is not just a
+    # replica-count change.
+    logging:
+      level: info
+      json: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: livekit
+  namespace: matrix
+spec:
+  replicas: 1
+  strategy:
+    # hostNetwork makes the ports a node-level singleton; a rolling update
+    # would race the old pod for 7880/7881 and crash-loop on EADDRINUSE.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: livekit
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: livekit
+      annotations:
+        kalitsune.net/config-generation: "1"
+    spec:
+      # Same reasoning as coturn: an SFU allocates media across a UDP range a
+      # Service cannot enumerate, and NAT traversal needs the real client
+      # address. The matrix namespace is already labelled
+      # pod-security.kubernetes.io/enforce=privileged for exactly this.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+
+      # Pinned to the worker so the router forward targets one stable address.
+      nodeSelector:
+        kubernetes.io/hostname: talos-192-168-1-171
+
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: livekit
+          image: livekit/livekit-server:v1.8.0
+          args:
+            - --config
+            - /etc/livekit/livekit.yaml
+          envFrom:
+            # Supplies LIVEKIT_KEYS. livekit-server merges it into the config's
+            # `keys` map, so the credential never touches the ConfigMap.
+            - secretRef:
+                name: livekit-keys
+          ports:
+            - name: signal
+              containerPort: 7880
+              hostPort: 7880
+              protocol: TCP
+            - name: rtc-tcp
+              containerPort: 7881
+              hostPort: 7881
+              protocol: TCP
+          volumeMounts:
+            - name: config
+              mountPath: /etc/livekit
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              # An SFU forwards streams without transcoding, so CPU stays
+              # modest, but memory scales with concurrent participants.
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 7880
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: config
+          configMap:
+            name: livekit-config
+---
+# Signalling only. The media ports are reached on the node directly via
+# hostNetwork and the router forward, so they are deliberately absent here —
+# a Service cannot express 50100-50200 anyway.
+apiVersion: v1
+kind: Service
+metadata:
+  name: livekit
+  namespace: matrix
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: livekit
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: 7880
+      protocol: TCP

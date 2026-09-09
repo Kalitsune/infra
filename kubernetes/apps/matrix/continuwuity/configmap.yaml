@@ -214,3 +214,19 @@ data:
 
   # CONTINUWUITY_TURN_SECRET is deliberately absent here — it lives in the
   # continuwuity-turn Secret and must match coturn's static-auth-secret.
+
+  # ------------------------------------------------------- MatrixRTC / calls
+  #
+  # Element Call is MatrixRTC, which is a different stack from the TURN relay
+  # above: TURN serves legacy 1:1 calls, while Element Call needs a LiveKit
+  # SFU plus a JWT broker (see kubernetes/apps/matrix/livekit/).
+  #
+  # Without this key the homeserver answers
+  # /_matrix/client/unstable/org.matrix.msc4143/rtc/transports with an empty
+  # list, and Element reports:
+  #
+  #   Call is not supported ... MISSING_MATRIX_RTC_TRANSPORT
+  #
+  # The URL is the PUBLIC lk-jwt-service address, not the SFU's websocket —
+  # clients ask it for a token and it replies with the wss:// URL to use.
+  CONTINUWUITY_MATRIX_RTC__FOCI: '[{type = "livekit", livekit_service_url = "https://livekit.kalitsune.net"}]'

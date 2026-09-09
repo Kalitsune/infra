@@ -1,0 +1,53 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: livekit
+  namespace: matrix
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    # Public on the apex, deliberately. Element Call runs in the browser of
+    # every participant — including users from other homeservers who were
+    # invited to a call — so this endpoint has to be reachable from the open
+    # internet the same way matrix.kalitsune.net is. A `lab.` hostname would
+    # make calls work only from inside the LAN.
+    #
+    # The surface behind it is small and machine-only: LiveKit's signalling
+    # API and the JWT broker. Neither is a dashboard, and neither is usable
+    # without a token minted from a valid Matrix identity.
+    - livekit.kalitsune.net
+  rules:
+    # ORDER MATTERS. Gateway API matches the most specific path first, but
+    # these three prefixes are listed as their own rule so the intent is
+    # explicit: they belong to the JWT broker, everything else is LiveKit.
+    # Getting this backwards means Element Call gets a 404 from the SFU when
+    # it asks for a token, which surfaces as a call that never connects.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /sfu/get
+        - path:
+            type: PathPrefix
+            value: /get_token
+        - path:
+            type: PathPrefix
+            value: /healthz
+      backendRefs:
+        - name: lk-jwt-service
+          port: 8081
+
+    # Everything else: LiveKit's signalling API, which is a WebSocket upgrade
+    # (wss://) for the actual call session.
+    #
+    # The long timeout is the same lesson as continuwuity's /sync above: a
+    # signalling WebSocket is held open for the whole duration of a call, and
+    # Envoy's 15s default would sever it mid-call. A call outliving one hour
+    # is unlikely but harmless to allow; being cut off at 15 seconds is not.
+    - timeouts:
+        backendRequest: 3600s
+        request: 3600s
+      backendRefs:
+        - name: livekit
+          port: 7880

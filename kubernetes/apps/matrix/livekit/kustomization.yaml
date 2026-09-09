@@ -1,0 +1,15 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - secret.yaml
+  - livekit.yaml
+  - lk-jwt-service.yaml
+  - httproute.yaml
+
+# The matrix namespace comes from the continuwuity app, which this depends on
+# anyway — the SFU is useless unless the homeserver advertises it via
+# matrix_rtc.foci. It is deliberately not re-declared here.
+#
+# That namespace carries pod-security.kubernetes.io/enforce=privileged,
+# originally for coturn; LiveKit needs it for the same reason (hostNetwork +
+# a media port range no Service can enumerate).
