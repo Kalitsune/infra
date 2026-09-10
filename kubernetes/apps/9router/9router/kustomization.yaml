@@ -8,3 +8,9 @@ resources:
   - deployment.yaml
   - oauth2-proxy.yaml
   - httproute.yaml
+  # Issues one API key per Hermes agent into hermes/9router-agent-keys.
+  # A Job, not an init container: it needs the SQLite database that only the
+  # running app creates, so it must run after the Deployment is up.
+  - provision-rbac.yaml
+  - provision-configmap.yaml
+  - provision-job.yaml

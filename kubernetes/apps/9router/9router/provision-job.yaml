@@ -1,0 +1,110 @@
+# Issues one 9Router API key per Hermes agent and publishes them as a Secret
+# the agent pods can consume.
+#
+# WHY A JOB AND NOT AN INIT CONTAINER
+#
+# An init container on the 9router Deployment cannot work: it would wait for
+# the SQLite database that only the MAIN container creates, and the main
+# container never starts until init containers exit. That is a deadlock on any
+# fresh volume — it would appear to work only because this deployment already
+# has a database.
+#
+# A Job also fits the semantics better. Provisioning is a one-shot task, not
+# part of the app's lifecycle, and it must run AFTER 9router is up.
+#
+# CONCURRENT SQLITE ACCESS IS SAFE HERE, narrowly:
+# the PVC is local-path (a node-local filesystem), where SQLite's fcntl()
+# locking works correctly. AGENT.md's warning is about NFS, where it does not.
+# The Job also does one short transaction. Do NOT move this volume to
+# truenas-nfs.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: 9router-provision-keys
+  namespace: 9router
+  annotations:
+    # Bump to force a re-run. A completed Job is immutable, so Flux cannot
+    # update it in place; changing the name via this suffix is how a re-run
+    # is requested.
+    kalitsune.net/provision-generation: "1"
+spec:
+  # Keep the finished pod around so its log (which key was created vs reused)
+  # is inspectable for a day.
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: 9router-provision
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: 9router-provisioner
+
+      initContainers:
+        # Step 1 — mint or recover the keys, using the app's own image so the
+        # node runtime and better-sqlite3 native bindings match exactly the
+        # ones that wrote the database.
+        - name: mint
+          image: docker.io/decolua/9router:0.5.69@sha256:47c17576ad49f0918d1a455dd412ae4509ee8bc742f17ba0b3327ddc70f35a40
+          command: ["node", "/scripts/provision-keys.js"]
+          env:
+            - name: NINEROUTER_AGENTS
+              value: "hermes,homelabexpert"
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: provisioned
+              mountPath: /provisioned
+
+      containers:
+        # Step 2 — publish them as a Secret in the hermes namespace. Split
+        # from step 1 because the 9router image has no kubectl, and because
+        # each container then does exactly one thing.
+        - name: publish
+          image: docker.io/bitnami/kubectl:1.33.2
+          command:
+            - sh
+            - -c
+            - |
+              set -eu
+              # --dry-run=client + apply -f -: create-or-update in one shot,
+              # without ever printing a key. The values move file -> kubectl
+              # via --from-file, so they never appear in argv (visible in
+              # `ps`) or in this container's log.
+              kubectl create secret generic 9router-agent-keys \
+                --namespace hermes \
+                --from-file=HERMES_9ROUTER_KEY=/provisioned/hermes.key \
+                --from-file=HOMELAB_EXPERT_9ROUTER_KEY=/provisioned/homelabexpert.key \
+                --dry-run=client -o yaml \
+                | kubectl apply -f - >/dev/null
+              echo "published Secret hermes/9router-agent-keys"
+              kubectl -n hermes get secret 9router-agent-keys \
+                -o jsonpath='{range .data.*}{.key}{"\n"}{end}' 2>/dev/null || true
+              echo "keys present:"
+              kubectl -n hermes get secret 9router-agent-keys -o json \
+                | grep -oE '"[A-Z_]+_9ROUTER_KEY"' | sort -u
+          volumeMounts:
+            - name: provisioned
+              mountPath: /provisioned
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: 9router-data
+        - name: scripts
+          configMap:
+            name: 9router-provision
+        # Ferries the minted keys between the two containers without touching
+        # the persistent volume or any log.
+        - name: provisioned
+          emptyDir: {}
