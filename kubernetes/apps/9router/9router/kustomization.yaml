@@ -3,5 +3,8 @@ kind: Kustomization
 resources:
   - namespace.yaml
   - secret.yaml
+  - oauth2-secret.yaml
   - pvc.yaml
   - deployment.yaml
+  - oauth2-proxy.yaml
+  - httproute.yaml

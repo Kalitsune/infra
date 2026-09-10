@@ -1,0 +1,101 @@
+---
+# oauth2-proxy fronting the 9Router dashboard.
+#
+# 9Router's own auth is a single shared password (INITIAL_PASSWORD, then a
+# bcrypt hash in SQLite) with no user accounts, no MFA and no lockout. That
+# was acceptable while the Service was ClusterIP-only and unreachable from
+# outside the cluster. Exposing it over the gateway changes the threat model
+# entirely, so Pocket ID OIDC goes in front and the shared password becomes a
+# second factor rather than the only one.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oauth2-proxy
+  namespace: 9router
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oauth2-proxy
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oauth2-proxy
+    spec:
+      containers:
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://id.kalitsune.net
+            - --redirect-url=https://9router.lab.kalitsune.net/oauth2/callback
+            # Cross-namespace is not possible: oauth2-proxy lives in this
+            # namespace precisely so it can reach the ClusterIP Service by
+            # short name. The port matches the Service, not the container.
+            - --upstream=http://9router:20128
+            - --http-address=0.0.0.0:4180
+            - --email-domain=*
+            - --cookie-secure=true
+            # Namespaced cookie. A shared name across apps on
+            # *.lab.kalitsune.net would let one app's session cookie be sent
+            # to another, since cookies ignore port and path by default.
+            - --cookie-name=_oauth2_proxy_9router
+            - --session-store-type=cookie
+            - --banner=" "
+            - --skip-provider-button=true
+            - --code-challenge-method=S256
+            # 9Router exposes an OpenAI-compatible API as well as a dashboard.
+            # A browser session cookie is useless to an API client, so
+            # /api/health stays reachable without auth for probes. Everything
+            # else — including the provider-token endpoints — requires a
+            # session.
+            #
+            # NOTE: this deliberately does NOT exempt the whole /api prefix.
+            # If you later want programmatic access, add a bearer-token path
+            # rather than widening this: 9Router's API keys are its own, and
+            # skipping auth for /api would expose every provider credential
+            # it holds.
+            - --skip-auth-route=^/api/health$
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookieSecret
+          ports:
+            - name: http
+              containerPort: 4180
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /ping
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: oauth2-proxy
+  namespace: 9router
+spec:
+  selector:
+    app.kubernetes.io/name: oauth2-proxy
+  ports:
+    - port: 4180
+      targetPort: http

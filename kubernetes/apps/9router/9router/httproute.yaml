@@ -1,0 +1,27 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: 9router
+  namespace: 9router
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    # `lab.`, not the apex. This is an administrative dashboard over AI
+    # provider credentials — exactly what AGENT.md says belongs on the
+    # internal suffix. Nothing here needs to be reachable by a third party.
+    #
+    # The hostname alone enforces nothing: *.lab.kalitsune.net resolves
+    # publicly and binds to the same public Gateway listener as every other
+    # host. oauth2-proxy is what actually gates access; the suffix is a
+    # convention, not a control.
+    - 9router.lab.kalitsune.net
+  rules:
+    # Everything goes through oauth2-proxy — the 9router Service is never a
+    # backendRef here. Routing any path straight to the app would bypass the
+    # OIDC session entirely and leave that path protected by nothing but the
+    # shared dashboard password.
+    - backendRefs:
+        - name: oauth2-proxy
+          port: 4180
