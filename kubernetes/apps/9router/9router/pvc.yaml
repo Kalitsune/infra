@@ -1,0 +1,19 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: 9router-data
+  namespace: 9router
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Deliberately NOT truenas-nfs: 9Router keeps all state in an embedded
+  # SQLite database at $DATA_DIR/db/data.sqlite (see src/lib/db/paths.js).
+  # SQLite coordinates writers with fcntl() locks and cannot share WAL across
+  # processes on a network filesystem, so NFS risks silent corruption. See the
+  # storage section of AGENT.md. This also holds the self-generated
+  # $DATA_DIR/jwt-secret, so the volume must survive pod restarts or every
+  # dashboard session is invalidated.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi

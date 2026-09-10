@@ -1,0 +1,122 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 9router
+  namespace: 9router
+spec:
+  # Singleton by design. State lives in one SQLite file on a ReadWriteOnce
+  # volume; a second replica would open the same database and corrupt it.
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate: the default maxSurge=1 would start the new
+    # pod while the old one still holds the SQLite database open. replicas: 1
+    # does not prevent that overlap on its own. See AGENT.md.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: 9router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: 9router
+    spec:
+      containers:
+        - name: 9router
+          # Pinned by tag+digest. ghcr.io/decolua/9router carries the same
+          # semver tags and resolves 0.5.69 to this identical digest (both
+          # registries are pushed by the same CI job), so switching registry
+          # is a hostname change and nothing else.
+          image: docker.io/decolua/9router:0.5.69@sha256:47c17576ad49f0918d1a455dd412ae4509ee8bc742f17ba0b3327ddc70f35a40
+          env:
+            # All state (SQLite db, backups, generated jwt-secret, certs) goes
+            # here. Without DATA_DIR the app falls back to ~/.9router inside
+            # the container filesystem, which is lost on every restart.
+            - name: DATA_DIR
+              value: /app/data
+            - name: PORT
+              value: "20128"
+            # Next.js standalone binds to process.env.HOSTNAME. The image
+            # already sets ENV HOSTNAME=0.0.0.0 and that wins over the
+            # HOSTNAME=<pod-name> the kubelet injects (verified by running
+            # this exact image), so this line is belt-and-braces rather than
+            # a fix. Keep it: if a future image drops that ENV, the kubelet
+            # value takes over, the server binds to the pod name only, and
+            # BASE_URL below (http://localhost:20128, used by the app's own
+            # sync jobs) silently stops resolving while the Service still
+            # works — a confusing half-broken state.
+            - name: HOSTNAME
+              value: 0.0.0.0
+            - name: NODE_ENV
+              value: production
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+            # Self-referential; the app calls its own API for sync jobs.
+            - name: BASE_URL
+              value: http://localhost:20128
+            - name: NEXT_PUBLIC_BASE_URL
+              value: http://localhost:20128
+            # Served as plain HTTP on a ClusterIP, so a Secure cookie would
+            # never be stored and the dashboard login would loop.
+            - name: AUTH_COOKIE_SECURE
+              value: "false"
+            # Overrides the hardcoded DEFAULT_PASSWORD "123456" fallback in
+            # src/lib/auth/dashboardSession.js. Only used until a password is
+            # set in the dashboard, which persists a bcrypt hash to SQLite.
+            - name: INITIAL_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: 9router-secrets
+                  key: INITIAL_PASSWORD
+          ports:
+            - name: http
+              containerPort: 20128
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          # /api/health is unauthenticated and returns {"ok":true}.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+      # No securityContext: the image entrypoint runs as root to chown the
+      # mounted volume, then drops to the node user via su-exec. Cluster PSA
+      # enforces baseline (restricted only warns), which permits that.
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: 9router-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: 9router
+  namespace: 9router
+spec:
+  # Internal only, as requested: no HTTPRoute, no Gateway listener, no DNS
+  # record. Reachable from inside the cluster at
+  # http://9router.9router.svc.cluster.local:20128
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: 9router
+  ports:
+    - name: http
+      port: 20128
+      targetPort: http
