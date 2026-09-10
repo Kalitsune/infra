@@ -66,6 +66,24 @@ spec:
         provider: anthropic
         default: claude-sonnet-5
 
+      # 9Router as an additional provider. Registered but NOT made default:
+      # switching the primary model is a behavioural change, so the operator
+      # can select a 9router/* model in the dashboard or config when ready.
+      #
+      # key_env, not api_key: the value is injected from the SOPS-managed
+      # Secret hermes/9router-agent-keys (created by the provisioning Job in
+      # apps/9router) via extraEnvFrom below. Nothing lands in git.
+      #
+      # base_url points at the ClusterIP Service, deliberately bypassing
+      # oauth2-proxy on 9router.lab.kalitsune.net — an OIDC browser flow is
+      # meaningless to an API client, and this traffic never leaves the
+      # cluster.
+      providers:
+        9router:
+          name: 9router
+          base_url: http://9router.9router.svc.cluster.local:20128/v1
+          key_env: HERMES_9ROUTER_KEY
+
       # --- A2A dispatcher ---
       #
       # This agent is the front door: it talks to the operator, then delegates
@@ -363,8 +381,10 @@ spec:
     #   verify_with_recovery_key() signs the device on the next start.
     # generation 13: added A2A outbound (hermes-a2a Secret + a2a_agents peer
     #   config) so this agent can dispatch tasks to specialist agents.
+    # generation 14: added 9router-agent-keys envFrom (HERMES_9ROUTER_KEY),
+    #   consumed by config.providers.9router.key_env.
     podAnnotations:
-      kalitsune.net/env-generation: "13"
+      kalitsune.net/env-generation: "14"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
@@ -426,6 +446,13 @@ spec:
       # new key here plus a config entry, with no decrypt round-trip needed.
       - secretRef:
           name: hermes-a2a
+      # 9Router API key (HERMES_9ROUTER_KEY), referenced by
+      # config.providers.9router.key_env above. Created by the provisioning
+      # Job in apps/9router, which is why this secretRef must tolerate the
+      # Secret not existing yet on a first-ever deploy — see optional below.
+      - secretRef:
+          name: 9router-agent-keys
+          optional: true
     controller:
       type: statefulset
     persistence:
