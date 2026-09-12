@@ -43,6 +43,17 @@ data:
     const AGENTS = (process.env.NINEROUTER_AGENTS || "hermes,homelabexpert")
       .split(",").map(s => s.trim()).filter(Boolean);
 
+    // machineId -> the environment variable each agent reads. These names are
+    // referenced by config.providers.9router.key_env in the two HelmReleases;
+    // changing one without the other silently breaks the provider.
+    const ENV_NAMES = {
+      hermes: "HERMES_9ROUTER_KEY",
+      homelabexpert: "HOMELAB_EXPERT_9ROUTER_KEY",
+    };
+
+    // Accumulates base64 key values for the Secret manifest written at the end.
+    const secretData = {};
+
     function generate(machineId) {
       const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
       let suffix = "";
@@ -111,7 +122,27 @@ data:
       const file = path.join(OUT, `${agent}.key`);
       fs.writeFileSync(file, key, { mode: 0o600 });
       console.log(`${agent}: wrote ${file} (${key.length} chars)`);
+      secretData[ENV_NAMES[agent] || `${agent.toUpperCase()}_9ROUTER_KEY`] =
+        Buffer.from(key, "utf8").toString("base64");
     }
+
+    // Emit the Secret manifest for the publish step. That container runs a
+    // DISTROLESS kubectl image with no shell, so it cannot pipe
+    // `create --dry-run | apply`; it applies this file instead, which is
+    // idempotent on re-run.
+    const manifest = [
+      "apiVersion: v1",
+      "kind: Secret",
+      "metadata:",
+      "  name: 9router-agent-keys",
+      "  namespace: hermes",
+      "type: Opaque",
+      "data:",
+      ...Object.entries(secretData).map(([k, v]) => `  ${k}: ${v}`),
+      "",
+    ].join("\n");
+    fs.writeFileSync(path.join(OUT, "secret.yaml"), manifest, { mode: 0o600 });
+    console.log("wrote secret.yaml for the publish step");
 
     db.close();
     console.log("provisioning complete");

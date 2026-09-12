@@ -18,10 +18,11 @@ metadata:
   namespace: hermes
 rules:
   # Deliberately narrow: this can create and update exactly one Secret and
-  # cannot read any other. `get` is required because `apply`-style updates
-  # read before writing; `list`/`watch` are not granted, so this identity
-  # cannot enumerate the namespace's other secrets (which include a
-  # cluster-admin kubeconfig and a push-capable deploy key).
+  # cannot read any other. `get` is required because `apply` reads before
+  # writing; `patch` covers server-side apply, which is what the publish
+  # container uses. `list`/`watch` are NOT granted, so this identity cannot
+  # enumerate the namespace's other secrets (which include a cluster-admin
+  # kubeconfig and a push-capable deploy key).
   - apiGroups: [""]
     resources: ["secrets"]
     resourceNames: ["9router-agent-keys"]

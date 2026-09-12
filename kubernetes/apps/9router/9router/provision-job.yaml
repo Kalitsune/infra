@@ -75,28 +75,31 @@ spec:
         # from step 1 because the 9router image has no kubectl, and because
         # each container then does exactly one thing.
         - name: publish
-          image: docker.io/bitnami/kubectl:1.33.2
-          command:
-            - sh
-            - -c
-            - |
-              set -eu
-              # --dry-run=client + apply -f -: create-or-update in one shot,
-              # without ever printing a key. The values move file -> kubectl
-              # via --from-file, so they never appear in argv (visible in
-              # `ps`) or in this container's log.
-              kubectl create secret generic 9router-agent-keys \
-                --namespace hermes \
-                --from-file=HERMES_9ROUTER_KEY=/provisioned/hermes.key \
-                --from-file=HOMELAB_EXPERT_9ROUTER_KEY=/provisioned/homelabexpert.key \
-                --dry-run=client -o yaml \
-                | kubectl apply -f - >/dev/null
-              echo "published Secret hermes/9router-agent-keys"
-              kubectl -n hermes get secret 9router-agent-keys \
-                -o jsonpath='{range .data.*}{.key}{"\n"}{end}' 2>/dev/null || true
-              echo "keys present:"
-              kubectl -n hermes get secret 9router-agent-keys -o json \
-                | grep -oE '"[A-Z_]+_9ROUTER_KEY"' | sort -u
+          # registry.k8s.io/kubectl is the canonical upstream image.
+          # NOT bitnami/kubectl: Bitnami moved its public catalogue to
+          # `bitnamilegacy` in Aug 2025, so bitnami/kubectl:1.33.2 no longer
+          # resolves — the tag this Job originally used 404s at pull time.
+          # Pinned to the cluster's own minor version, by digest.
+          #
+          # This image is DISTROLESS: there is no `sh`, so the command below
+          # must invoke kubectl directly rather than wrapping a shell script.
+          # Verified by running `sh -c` in it: "exec: sh: executable file not
+          # found in $PATH".
+          #
+          # `create --dry-run=client -o yaml | apply -f -` is therefore not
+          # available (no shell = no pipe). `kubectl create secret ... ` alone
+          # would fail on re-run because the Secret already exists, so
+          # `--save-config` + `apply` is replaced by a single idempotent
+          # `kubectl apply` of a manifest the mint step writes to the shared
+          # volume — see provision-keys.js, which emits secret.yaml alongside
+          # the key files.
+          image: registry.k8s.io/kubectl:v1.36.1@sha256:d08f476d04d0e30f426f06bc6ff6c38913aaa4591943046b77e2f74a72d3611c
+          args:
+            - apply
+            - --server-side
+            - --force-conflicts
+            - -f
+            - /provisioned/secret.yaml
           volumeMounts:
             - name: provisioned
               mountPath: /provisioned
