@@ -43,12 +43,19 @@ data:
     const AGENTS = (process.env.NINEROUTER_AGENTS || "hermes,homelabexpert")
       .split(",").map(s => s.trim()).filter(Boolean);
 
-    // machineId -> the environment variable each agent reads. These names are
-    // referenced by config.providers.9router.key_env in the two HelmReleases;
-    // changing one without the other silently breaks the provider.
+    // machineId -> the environment variable each consumer reads. The first
+    // two are referenced by config.providers.9router.key_env in the two
+    // HelmReleases; changing one without the other silently breaks the
+    // provider.
+    //
+    // `laptop` is not an in-cluster workload — it is the operator's local
+    // agent. Its key is minted here so every key has one provenance, and is
+    // read out of the Secret by hand when needed. It is a distinct machineId
+    // so it can be revoked in the dashboard without touching the agents.
     const ENV_NAMES = {
       hermes: "HERMES_9ROUTER_KEY",
       homelabexpert: "HOMELAB_EXPERT_9ROUTER_KEY",
+      laptop: "LAPTOP_9ROUTER_KEY",
     };
 
     // Accumulates base64 key values for the Secret manifest written at the end.

@@ -14,14 +14,63 @@ spec:
     #
     # The hostname alone enforces nothing: *.lab.kalitsune.net resolves
     # publicly and binds to the same public Gateway listener as every other
-    # host. oauth2-proxy is what actually gates access; the suffix is a
-    # convention, not a control.
+    # host. What gates each path is described per-rule below.
     - 9router.lab.kalitsune.net
+
+  # Gateway API sorts rules by specificity, not document order: a PathPrefix
+  # match beats the catch-all `/` regardless of where it appears. The order
+  # below is for human readers.
   rules:
-    # Everything goes through oauth2-proxy — the 9router Service is never a
-    # backendRef here. Routing any path straight to the app would bypass the
-    # OIDC session entirely and leave that path protected by nothing but the
-    # shared dashboard password.
+    # --- 1. The OpenAI-compatible API: straight to the app, no oauth2-proxy.
+    #
+    # An API client cannot complete an interactive OIDC redirect, so routing
+    # these paths through oauth2-proxy returns 302 to id.kalitsune.net and the
+    # client sees HTML instead of JSON. That is exactly what blocked the
+    # laptop agent.
+    #
+    # Bypassing the proxy here is safe because /v1 is NOT unauthenticated —
+    # 9Router's own middleware requires a valid API key on these prefixes and
+    # returns 401 "API key required for remote API access" without one.
+    # VERIFIED from a pod OUTSIDE 9router (source 10.244.1.37, i.e. the same
+    # position Envoy occupies):
+    #   no key                     -> 401
+    #   bogus key                  -> 401
+    #   provisioned key            -> authenticated (404 only because the test
+    #                                 model name was deliberately fake)
+    #   X-Forwarded-For: 127.0.0.1 -> 401  (the local-caller exemption cannot
+    #   X-Real-IP: 127.0.0.1       -> 401   be spoofed by a forwarded header)
+    #
+    # The prefixes match 9Router's own `aJ` list in middleware.js — the set it
+    # treats as key-authenticated API surface. Keep them in sync.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /v1
+        - path:
+            type: PathPrefix
+            value: /v1beta
+        - path:
+            type: PathPrefix
+            value: /api/v1
+        - path:
+            type: PathPrefix
+            value: /api/v1beta
+        - path:
+            type: PathPrefix
+            value: /codex
+        - path:
+            type: PathPrefix
+            value: /responses
+      backendRefs:
+        - name: 9router
+          port: 20128
+
+    # --- 2. Everything else: the dashboard, behind Pocket ID.
+    #
+    # The 9router Service is deliberately NOT a backendRef for this rule.
+    # Routing the dashboard straight at the app would leave it guarded only by
+    # 9Router's own password — which is currently unset (`hasPassword: false`),
+    # i.e. by nothing.
     - backendRefs:
         - name: oauth2-proxy
           port: 4180

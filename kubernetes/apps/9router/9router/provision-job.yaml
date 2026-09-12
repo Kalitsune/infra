@@ -24,9 +24,11 @@ metadata:
   namespace: 9router
   annotations:
     # Bump to force a re-run. A completed Job is immutable, so Flux cannot
-    # update it in place; changing the name via this suffix is how a re-run
-    # is requested.
-    kalitsune.net/provision-generation: "1"
+    # update it in place; changing this annotation is how a re-run is
+    # requested. The Job must then be deleted once so the new spec applies:
+    #   kubectl -n 9router delete job 9router-provision-keys
+    # generation 2: added the `laptop` machineId.
+    kalitsune.net/provision-generation: "2"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.
@@ -59,8 +61,12 @@ spec:
           env:
             - name: NODE_PATH
               value: /app/node_modules
+            # `laptop` is the operator's local agent, not a cluster workload.
+            # Its key lands in the same Secret; read it out with:
+            #   kubectl -n hermes get secret 9router-agent-keys \
+            #     -o jsonpath='{.data.LAPTOP_9ROUTER_KEY}' | base64 -d
             - name: NINEROUTER_AGENTS
-              value: "hermes,homelabexpert"
+              value: "hermes,homelabexpert,laptop"
           volumeMounts:
             - name: data
               mountPath: /app/data
