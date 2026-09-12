@@ -8,30 +8,43 @@ the `hermes` A2A dispatcher.
 
 ## Reaching it
 
-Internal only — ClusterIP, no `HTTPRoute`, no Gateway listener, no DNS record.
-This was the explicit ask: the dashboard is not needed from outside the
-cluster.
+Published at **<https://9router.lab.kalitsune.net>**, behind Pocket ID OIDC.
 
 | | |
 | --- | --- |
+| Public URL | `https://9router.lab.kalitsune.net` (OIDC required) |
 | Service | `9router` in namespace `9router` |
 | Cluster DNS | `9router.9router.svc.cluster.local` |
 | Port | `20128` |
 | OpenAI-compatible API | `http://9router.9router.svc.cluster.local:20128/v1` |
-| Dashboard | same host/port, `/` |
 | Health | `/api/health` → `{"ok":true}`, unauthenticated |
 
-From a workstation, reach the dashboard with a port-forward rather than by
-adding a route:
+In-cluster callers should keep using the ClusterIP Service directly. It
+bypasses oauth2-proxy by design — an OIDC browser flow is meaningless to an
+API client, and the Service was never the exposed surface.
+
+A port-forward still works and skips OIDC entirely, which is the fastest way
+in if Pocket ID is ever down:
 
 ```bash
 kubectl -n 9router port-forward svc/9router 20128:20128
 # then http://localhost:20128
 ```
 
-**Do not promote this to a `lab.` hostname without a deliberate decision.** It
-holds provider OAuth tokens and API keys and its own auth is a single shared
-password, so exposing it widens the blast radius of that one credential.
+### Why it is behind oauth2-proxy
+
+This app holds provider OAuth tokens and API keys, and its own auth is a
+single shared password with no accounts, no MFA and no lockout — originally
+acceptable only because the Service was unreachable from outside the cluster.
+
+Publishing it reverses that, so Pocket ID OIDC is the real gate and the
+dashboard password becomes a second factor. The `lab.` suffix is a naming
+convention and enforces nothing on its own: `*.lab.kalitsune.net` resolves
+publicly and binds to the same Gateway listener as every other host.
+
+Only `/api/health` skips authentication, so probes keep working. The `/api`
+prefix as a whole is deliberately **not** exempt — widening it would expose
+every provider credential the app holds to anyone who can reach the hostname.
 
 ## Storage
 

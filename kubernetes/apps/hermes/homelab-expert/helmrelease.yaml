@@ -74,6 +74,17 @@ spec:
       model:
         provider: anthropic
         default: claude-opus-5
+
+      # 9Router as an additional provider. Registered, not default — see the
+      # sibling release for the full reasoning. key_env resolves from the
+      # SOPS-managed Secret hermes/9router-agent-keys, so no credential is in
+      # git, and base_url is the ClusterIP Service so this never traverses
+      # oauth2-proxy.
+      providers:
+        9router:
+          name: 9router
+          base_url: http://9router.9router.svc.cluster.local:20128/v1
+          key_env: HOMELAB_EXPERT_9ROUTER_KEY
       agent:
         reasoning_effort: max
       # Enables the inbound A2A server. The adapter also honours A2A_PORT from
@@ -286,6 +297,13 @@ spec:
       # gate and the audit log key on.
       - secretRef:
           name: homelab-expert-a2a
+      # 9Router API key (HOMELAB_EXPERT_9ROUTER_KEY), referenced by
+      # config.providers.9router.key_env above. Created by the provisioning
+      # Job in apps/9router; optional so a first-ever deploy does not block on
+      # the Job having run.
+      - secretRef:
+          name: 9router-agent-keys
+          optional: true
 
     extraVolumes:
       # NOTE: this Secret is still named `hermes-infra-expert-secrets`.
@@ -512,5 +530,8 @@ spec:
     #   matches this account's own SSSS metadata.
     # generation 3: enabled inbound A2A (homelab-expert-a2a Secret, port 9900,
     #   restricted advertised toolsets) so hermes can dispatch tasks here.
+    # generation 4: added 9router-agent-keys envFrom
+    #   (HOMELAB_EXPERT_9ROUTER_KEY), consumed by
+    #   config.providers.9router.key_env.
     podAnnotations:
-      kalitsune.net/env-generation: "3"
+      kalitsune.net/env-generation: "4"

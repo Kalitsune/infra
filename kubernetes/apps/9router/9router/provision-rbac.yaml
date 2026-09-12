@@ -1,0 +1,48 @@
+# RBAC for the key-provisioning Job.
+#
+# The Job needs to write a Secret into the `hermes` namespace, which is a
+# different namespace from the one it runs in. That is expressed as a
+# RoleBinding in `hermes` that references a ServiceAccount in `9router` —
+# permissions are granted by the namespace that owns the resource, not by the
+# one the caller lives in.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: 9router-provisioner
+  namespace: 9router
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: 9router-key-writer
+  namespace: hermes
+rules:
+  # Deliberately narrow: this can create and update exactly one Secret and
+  # cannot read any other. `get` is required because `apply`-style updates
+  # read before writing; `list`/`watch` are not granted, so this identity
+  # cannot enumerate the namespace's other secrets (which include a
+  # cluster-admin kubeconfig and a push-capable deploy key).
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["9router-agent-keys"]
+    verbs: ["get", "update", "patch"]
+  # `create` cannot be restricted by resourceName — the name does not exist
+  # yet at admission time — so it is granted separately and the Job only ever
+  # creates the one name above.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: 9router-key-writer
+  namespace: hermes
+subjects:
+  - kind: ServiceAccount
+    name: 9router-provisioner
+    namespace: 9router
+roleRef:
+  kind: Role
+  name: 9router-key-writer
+  apiGroup: rbac.authorization.k8s.io

@@ -1,0 +1,117 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: 9router-provision
+  namespace: 9router
+data:
+  # Provisions one API key per Hermes agent, directly in 9Router's SQLite
+  # database, and writes each key to a file the agent pods can consume.
+  #
+  # WHY THE DATABASE AND NOT THE HTTP API
+  #
+  # /api/keys is guarded by the dashboard session cookie, so an automated
+  # caller would have to log in with the shared password, scrape a cookie and
+  # replay it — a fragile flow that breaks the moment the password is changed
+  # in the UI (which it should be). The database is the same source of truth
+  # the API writes to, and this container already has the volume mounted.
+  #
+  # KEY FORMAT — must match the app exactly or the key is rejected.
+  # From chunk 241.js, generateApiKeyWithMachine():
+  #
+  #   suffix = 6 chars from [a-z0-9]
+  #   check  = HMAC-SHA256(API_KEY_SECRET, machineId + suffix).hex[0:8]
+  #   key    = `sk-${machineId}-${suffix}-${check}`
+  #
+  # API_KEY_SECRET defaults to "endpoint-proxy-api-key-secret" and is NOT set
+  # on this Deployment, so the default applies. If it is ever set, this script
+  # inherits the same env and stays correct.
+  #
+  # Lookup is `SELECT ... FROM apiKeys WHERE key = ?` against the plaintext
+  # column, so the value written here is what the agent presents verbatim.
+  provision-keys.js: |
+    const crypto = require("crypto");
+    const fs = require("fs");
+    const path = require("path");
+    const Database = require("better-sqlite3");
+
+    const DB = "/app/data/db/data.sqlite";
+    const OUT = "/provisioned";
+    const SECRET = process.env.API_KEY_SECRET || "endpoint-proxy-api-key-secret";
+
+    // machineId doubles as the stable identity of each consumer. Keep these
+    // lowercase and hyphen-free: they become part of the key string.
+    const AGENTS = (process.env.NINEROUTER_AGENTS || "hermes,homelabexpert")
+      .split(",").map(s => s.trim()).filter(Boolean);
+
+    function generate(machineId) {
+      const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
+      let suffix = "";
+      // crypto.randomInt, not Math.random: this value is a credential.
+      for (let i = 0; i < 6; i++) {
+        suffix += alphabet.charAt(crypto.randomInt(alphabet.length));
+      }
+      const check = crypto.createHmac("sha256", SECRET)
+        .update(machineId + suffix).digest("hex").slice(0, 8);
+      return `sk-${machineId}-${suffix}-${check}`;
+    }
+
+    // The app creates the schema on first boot. If this container wins the
+    // race on a brand-new volume there is no table yet, so wait rather than
+    // creating one and risking a divergent schema.
+    let db;
+    for (let attempt = 1; attempt <= 30; attempt++) {
+      try {
+        db = new Database(DB);
+        const t = db.prepare(
+          "SELECT name FROM sqlite_master WHERE type='table' AND name='apiKeys'"
+        ).get();
+        if (t) break;
+        db.close();
+        db = null;
+      } catch (e) {
+        if (db) { try { db.close(); } catch (_) {} db = null; }
+      }
+      console.log(`waiting for apiKeys table (${attempt}/30)`);
+      // Busy-wait: this is a short-lived init container with no event loop.
+      Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 2000);
+    }
+    if (!db) {
+      console.error("apiKeys table never appeared; is 9router initialised?");
+      process.exit(1);
+    }
+
+    fs.mkdirSync(OUT, { recursive: true });
+    const insert = db.prepare(
+      "INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt) " +
+      "VALUES(?, ?, ?, ?, ?, ?)"
+    );
+
+    for (const agent of AGENTS) {
+      const name = `${agent} (provisioned)`;
+      // IDEMPOTENT: reuse the existing key for this machineId rather than
+      // minting a second one on every pod restart. Agents cache the value,
+      // so rotating silently would break them until they restarted too.
+      const existing = db.prepare(
+        "SELECT key FROM apiKeys WHERE machineId = ? AND isActive = 1 " +
+        "ORDER BY createdAt ASC"
+      ).get(agent);
+
+      let key;
+      if (existing) {
+        key = existing.key;
+        console.log(`${agent}: reusing existing key`);
+      } else {
+        key = generate(agent);
+        insert.run(crypto.randomUUID(), key, name, agent, 1,
+                   new Date().toISOString());
+        console.log(`${agent}: created new key`);
+      }
+
+      // 0600, and the value never goes to stdout.
+      const file = path.join(OUT, `${agent}.key`);
+      fs.writeFileSync(file, key, { mode: 0o600 });
+      console.log(`${agent}: wrote ${file} (${key.length} chars)`);
+    }
+
+    db.close();
+    console.log("provisioning complete");
