@@ -8,7 +8,18 @@ spec:
   chart:
     spec:
       chart: hermes-agent
-      version: ">=1.11.0 <2.0.0"
+      # PINNED to 1.14.x — see the sibling homelab-expert release for the full
+      # reasoning. Short version: a chart bump that changes the labels inside
+      # volumeClaimTemplates cannot be applied to an existing StatefulSet,
+      # because that field is immutable; Helm then rolls back forever and
+      # takes every mutable change in the release with it.
+      #
+      # This release is ALREADY on 1.14.0, but its live VCT labels still read
+      # hermes-agent-1.12.1 — it upgraded across 1.13/1.14 without ever
+      # rewriting that field, which is the only reason it survived. The next
+      # chart version that does touch it would break this release the same
+      # way, so the range is closed here too rather than left open to 2.0.0.
+      version: 1.14.x
       sourceRef:
         kind: HelmRepository
         name: hermes-agent
