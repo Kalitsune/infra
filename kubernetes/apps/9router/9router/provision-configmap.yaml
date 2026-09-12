@@ -153,3 +153,68 @@ data:
 
     db.close();
     console.log("provisioning complete");
+
+    // ------------------------------------------------------------------
+    // Seed 9Router's own OIDC dashboard login.
+    //
+    // WHY THIS IS HERE AND NOT IN THE UI
+    //
+    // Every /api/settings* route is GET-only — the dashboard writes settings
+    // through Next.js server actions, so there is no HTTP call to automate.
+    // Configuring OIDC by hand would leave the client secret living only in
+    // SQLite on the PVC, undeclared and lost on a volume restore. Writing it
+    // here keeps the source of truth in git (SOPS-encrypted) and makes the
+    // dashboard's auth reproducible.
+    //
+    // The credentials are the SAME Pocket ID client oauth2-proxy already
+    // uses, mounted from the same Secret. Pocket ID accepts several redirect
+    // URIs per client, so the operator adds this one alongside the existing
+    // oauth2-proxy callback:
+    //   https://9router.lab.kalitsune.net/api/auth/oidc/callback
+    //
+    // oidcConfigured is computed by the app as:
+    //   !!(oidcIssuerUrl && oidcClientId && oidcClientSecret)
+    // so all three must be present or the OIDC button never appears.
+    //
+    // The settings blob is PLAINTEXT JSON — the crypto elsewhere in the image
+    // is for Cursor tokens, SAML and MITM, not for this. /api/settings strips
+    // `password` and `oidcClientSecret` from its responses, so the secret is
+    // redacted in transit but not at rest.
+    const ISSUER = process.env.OIDC_ISSUER_URL || "";
+    const CLIENT_ID = process.env.OIDC_CLIENT_ID || "";
+    const CLIENT_SECRET = process.env.OIDC_CLIENT_SECRET || "";
+
+    if (ISSUER && CLIENT_ID && CLIENT_SECRET) {
+      const sdb = new Database(DB);
+      const row = sdb.prepare("SELECT data FROM settings WHERE id = 1").get();
+      let settings = {};
+      if (row && row.data) {
+        try { settings = JSON.parse(row.data); } catch (_) { settings = {}; }
+      }
+
+      // Merge, never replace: the app reads {...defaults, ...stored}, and this
+      // row also carries provider routing, capacity and proxy configuration
+      // that the operator edits in the UI. Overwriting it would silently
+      // discard all of that.
+      settings.ssoType = "oidc";
+      settings.oidcIssuerUrl = ISSUER;
+      settings.oidcClientId = CLIENT_ID;
+      settings.oidcClientSecret = CLIENT_SECRET;
+      settings.oidcScopes = settings.oidcScopes || "openid profile email";
+      settings.oidcLoginLabel = settings.oidcLoginLabel || "Sign in with Pocket ID";
+
+      // requireLogin stays TRUE. The dashboard must still demand an identity;
+      // the point of this block is to make that identity OIDC instead of a
+      // shared password, not to remove the gate.
+      settings.requireLogin = true;
+
+      sdb.prepare(
+        "INSERT INTO settings(id, data) VALUES(1, ?) " +
+        "ON CONFLICT(id) DO UPDATE SET data = excluded.data"
+      ).run(JSON.stringify(settings));
+      sdb.close();
+
+      console.log("OIDC dashboard login seeded (issuer set, ssoType=oidc)");
+    } else {
+      console.log("OIDC env not provided; leaving dashboard auth untouched");
+    }

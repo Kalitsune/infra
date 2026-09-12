@@ -27,8 +27,8 @@ metadata:
     # update it in place; changing this annotation is how a re-run is
     # requested. The Job must then be deleted once so the new spec applies:
     #   kubectl -n 9router delete job 9router-provision-keys
-    # generation 2: added the `laptop` machineId.
-    kalitsune.net/provision-generation: "2"
+    # generation 3: seed OIDC dashboard login from the oauth2-proxy client.
+    kalitsune.net/provision-generation: "3"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.
@@ -67,6 +67,22 @@ spec:
             #     -o jsonpath='{.data.LAPTOP_9ROUTER_KEY}' | base64 -d
             - name: NINEROUTER_AGENTS
               value: "hermes,homelabexpert,laptop"
+            # OIDC dashboard login, using the SAME Pocket ID client that
+            # oauth2-proxy already uses — same Secret, no second client to
+            # rotate. Pocket ID allows multiple redirect URIs per client, so
+            # both callbacks live on the one registration.
+            - name: OIDC_ISSUER_URL
+              value: https://id.kalitsune.net
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
           volumeMounts:
             - name: data
               mountPath: /app/data
