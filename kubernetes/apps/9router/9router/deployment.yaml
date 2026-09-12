@@ -50,15 +50,28 @@ spec:
               value: production
             - name: NEXT_TELEMETRY_DISABLED
               value: "1"
-            # Self-referential; the app calls its own API for sync jobs.
+            # The app's PUBLIC origin. It is used for two different things:
+            #   1. self-referential calls for its own sync jobs
+            #   2. building the OIDC redirect_uri in /api/auth/oidc/start
+            #
+            # (2) is why this must be the external URL. The builder is:
+            #   BASE_URL || NEXT_PUBLIC_BASE_URL || x-forwarded-proto/host
+            # so with localhost here, the OIDC flow sends Pocket ID a
+            # redirect_uri of http://localhost:20128/api/auth/oidc/callback —
+            # which the browser cannot reach and Pocket ID would reject as an
+            # unregistered URI.
+            #
+            # Setting it to the public origin keeps (1) working: the app
+            # reaches itself through Envoy, and /v1 bypasses oauth2-proxy, so
+            # internal calls do not hit an OIDC redirect.
             - name: BASE_URL
-              value: http://localhost:20128
+              value: https://9router.lab.kalitsune.net
             - name: NEXT_PUBLIC_BASE_URL
-              value: http://localhost:20128
-            # Served as plain HTTP on a ClusterIP, so a Secure cookie would
-            # never be stored and the dashboard login would loop.
+              value: https://9router.lab.kalitsune.net
+            # Now served over HTTPS at the public origin, so the auth cookie
+            # can and should carry the Secure flag.
             - name: AUTH_COOKIE_SECURE
-              value: "false"
+              value: "true"
             # Overrides the hardcoded DEFAULT_PASSWORD "123456" fallback in
             # src/lib/auth/dashboardSession.js. Only used until a password is
             # set in the dashboard, which persists a bcrypt hash to SQLite.

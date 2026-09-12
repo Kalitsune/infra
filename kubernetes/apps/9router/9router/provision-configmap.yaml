@@ -196,6 +196,24 @@ data:
       // row also carries provider routing, capacity and proxy configuration
       // that the operator edits in the UI. Overwriting it would silently
       // discard all of that.
+      // authMode is the field the OIDC resolver actually gates on:
+      //
+      //   ["oidc","both"].includes(settings.authMode) && hasOidcFields(...)
+      //     ? { issuerUrl, clientId, clientSecret, ... }
+      //     : null
+      //
+      // ssoType only selects WHICH SSO flavour the login page offers (oidc vs
+      // saml); it does not enable SSO. Setting ssoType alone leaves
+      // /api/auth/status reporting oidcConfigured:true — because that is a
+      // different, field-presence-only check — while /api/auth/oidc/start
+      // still redirects to ?error=oidc_not_configured. Both must be set.
+      //
+      // "both" rather than "oidc": it keeps the INITIAL_PASSWORD fallback
+      // working as a break-glass path. With "oidc", a misconfigured or
+      // unreachable Pocket ID locks the dashboard out completely, and the only
+      // way back in is editing SQLite by hand. The password is a 32-char
+      // random value from a SOPS-encrypted Secret, not a guessable default.
+      settings.authMode = "both";
       settings.ssoType = "oidc";
       settings.oidcIssuerUrl = ISSUER;
       settings.oidcClientId = CLIENT_ID;
