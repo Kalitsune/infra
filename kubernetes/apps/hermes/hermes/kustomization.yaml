@@ -6,7 +6,11 @@ resources:
   - ../secret.yaml
   - matrix-secret.yaml
   - a2a-secret.yaml
-  - secret.yaml
+  # NOTE: `secrets.yaml`, plural. The merge in f3a67e2 consolidated
+  # honcho-client-secret.yaml into this file but left the reference here at the
+  # old singular name, which broke `kustomize build` for the whole app — Flux
+  # stopped applying hermes entirely and sat on the previous revision.
+  - secrets.yaml
   - managed-configmap.yaml
   - helmrelease.yaml
   - oauth2-secret.yaml

@@ -73,22 +73,22 @@ spec:
                 value: v2026.8.27
   values:
     config:
+      # Routed through 9Router, not straight to Anthropic.
+      #
+      # The upstream credentials (Claude OAuth, Gemini) now live in 9Router's
+      # own provider connections, which is why CLAUDE_CODE_OAUTH_TOKEN and
+      # GOOGLE_API_KEY were removed from the SOPS secrets in f3a67e2. This
+      # agent authenticates to 9Router with its own minted API key and 9Router
+      # holds the real credentials — one place to rotate, and per-agent keys
+      # that can be revoked individually.
+      #
+      # The `cc/` prefix is 9Router's namespacing for the Claude connection.
+      # Verified serving before this change: /v1/chat/completions returns 200
+      # with a real streamed completion for cc/claude-sonnet-5.
       model:
-        provider: anthropic
-        default: claude-sonnet-5
+        provider: 9router
+        default: cc/claude-sonnet-5
 
-      # 9Router as an additional provider. Registered but NOT made default:
-      # switching the primary model is a behavioural change, so the operator
-      # can select a 9router/* model in the dashboard or config when ready.
-      #
-      # key_env, not api_key: the value is injected from the SOPS-managed
-      # Secret hermes/9router-agent-keys (created by the provisioning Job in
-      # apps/9router) via extraEnvFrom below. Nothing lands in git.
-      #
-      # base_url points at the ClusterIP Service, deliberately bypassing
-      # oauth2-proxy on 9router.lab.kalitsune.net — an OIDC browser flow is
-      # meaningless to an API client, and this traffic never leaves the
-      # cluster.
       providers:
         9router:
           name: 9router
@@ -394,8 +394,10 @@ spec:
     #   config) so this agent can dispatch tasks to specialist agents.
     # generation 14: added 9router-agent-keys envFrom (HERMES_9ROUTER_KEY),
     #   consumed by config.providers.9router.key_env.
+    # generation 16: model provider switched to 9router; removed the dangling
+    #   hermes-matrix-recovery envFrom (Secret consolidated into matrix-secret).
     podAnnotations:
-      kalitsune.net/env-generation: "15"
+      kalitsune.net/env-generation: "16"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
@@ -444,14 +446,13 @@ spec:
       # so every sender got a pairing code instead of a reply.
       - secretRef:
           name: hermes-matrix-secrets-default
-      # Cross-signing verification key, in its own Secret rather than merged
-      # into the one above. Adding a key to an existing SOPS file requires the
-      # age PRIVATE key to decrypt it first; encrypting a NEW file needs only
-      # the public recipient from .sops.yaml. Splitting it keeps the value
-      # encrypted at rest without a decrypt round-trip. envFrom merges both,
-      # so the process sees one flat environment either way.
-      - secretRef:
-          name: hermes-matrix-recovery
+      # MATRIX_RECOVERY_KEY now lives in matrix-secret.yaml alongside the other
+      # Matrix values, folded in by the operator in f3a67e2 — the split existed
+      # only because this agent cannot decrypt SOPS to add a key to an existing
+      # file. The separate hermes-matrix-recovery Secret is therefore gone from
+      # git, and Flux prunes it on the next successful apply. Leaving a
+      # non-optional secretRef to a pruned Secret yields
+      # CreateContainerConfigError, exactly like the MATRIX_DEVICE_ID outage.
       # Outbound A2A peer tokens, referenced from a2a_agents as
       # ${env:A2A_TOKEN_*}. Kept in its own Secret so adding a specialist is a
       # new key here plus a config entry, with no decrypt round-trip needed.

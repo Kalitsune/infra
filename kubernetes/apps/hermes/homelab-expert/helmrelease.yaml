@@ -95,15 +95,17 @@ spec:
     # Multiplexing is deliberately NOT enabled. Re-enabling it would put a
     # second identity back inside this process and undo the isolation.
     config:
+      # Routed through 9Router — see the sibling hermes release for the full
+      # reasoning. Upstream credentials live in 9Router's provider connections;
+      # this agent presents only its own minted key.
+      #
+      # opus rather than sonnet, matching what this agent ran on before.
+      # Verified serving before this change: cc/claude-opus-5 returns 200 with
+      # a real streamed completion.
       model:
-        provider: anthropic
-        default: claude-opus-5
+        provider: 9router
+        default: cc/claude-opus-5
 
-      # 9Router as an additional provider. Registered, not default — see the
-      # sibling release for the full reasoning. key_env resolves from the
-      # SOPS-managed Secret hermes/9router-agent-keys, so no credential is in
-      # git, and base_url is the ClusterIP Service so this never traverses
-      # oauth2-proxy.
       providers:
         9router:
           name: 9router
@@ -557,5 +559,6 @@ spec:
     # generation 4: added 9router-agent-keys envFrom
     #   (HOMELAB_EXPERT_9ROUTER_KEY), consumed by
     #   config.providers.9router.key_env.
+    # generation 5: model provider switched to 9router (cc/claude-opus-5).
     podAnnotations:
-      kalitsune.net/env-generation: "4"
+      kalitsune.net/env-generation: "5"
