@@ -341,9 +341,10 @@ spec:
         secret:
           secretName: hermes-infra-expert-secrets
           defaultMode: 0400
-      - name: honcho-client-secrets
-        secret:
-          secretName: honcho-client-secrets
+      # The honcho-client-secrets volume is gone: HONCHO_API_KEY was folded
+      # into the global hermes-secrets in 0b95fd1, so Flux pruned that Secret
+      # and a volume referencing it would stop this pod from starting.
+      # The key now arrives as an env var via extraEnvFrom instead.
       - name: hermes-managed
         configMap:
           name: hermes-managed
@@ -415,6 +416,17 @@ spec:
 
       - name: seed-agent-home
         image: busybox:1.38
+        # Explicit secretKeyRef: the chart attaches extraEnvFrom only to the
+        # main container, so an init container inherits none of it (verified by
+        # rendering the chart — this container has 0 envFrom entries). Without
+        # it, HONCHO_API_KEY would be empty and the ${VAR:?} guard below would
+        # abort the pod.
+        env:
+          - name: HONCHO_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: hermes-secrets
+                key: HONCHO_API_KEY
         command:
           - sh
           - -c
@@ -456,7 +468,7 @@ spec:
             # profile IS the root profile here. peerName is shared with the
             # other release so both agents see one view of the user, while
             # each keeps its own AI peer and therefore its own self-model.
-            api_key="$(cat /honcho-client-secrets/HONCHO_API_KEY)"
+            api_key="${HONCHO_API_KEY:?HONCHO_API_KEY missing from env}"
             cat > /opt/data/honcho.json <<EOF
             {
               "enabled": true,
@@ -477,9 +489,6 @@ spec:
             mountPath: /opt/data
           - name: infra-secrets
             mountPath: /infra-secrets
-            readOnly: true
-          - name: honcho-client-secrets
-            mountPath: /honcho-client-secrets
             readOnly: true
 
     service:

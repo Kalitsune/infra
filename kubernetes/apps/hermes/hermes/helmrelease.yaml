@@ -201,7 +201,14 @@ spec:
             # apiKey lives at the top level: the plugin only substitutes its
             # "local" placeholder for loopback/RFC1918 URLs, and a cluster DNS
             # name is neither, so the real JWT is required here.
-            api_key="$(cat /honcho-client-secrets/HONCHO_API_KEY)"
+            # HONCHO_API_KEY now arrives as an ENV VAR from hermes-secrets
+            # (the operator folded it into the global secret in 0b95fd1), not
+            # from a mounted file. The honcho-client-secrets volume no longer
+            # exists, and mounting it made the StatefulSet invalid:
+            #   spec.template.spec.initContainers[2].volumeMounts[1].name:
+            #   Not found: "honcho-client-secrets"
+            # which failed every Helm upgrade and rolled the release back.
+            api_key="${HONCHO_API_KEY:?HONCHO_API_KEY missing from env}"
             cat > /opt/data/honcho.json <<EOF
             {
               "enabled": true,
@@ -256,12 +263,19 @@ spec:
               secretKeyRef:
                 name: hermes-matrix-secrets-default
                 key: MATRIX_DEVICE_ID
+          # Explicit secretKeyRef, NOT inherited from extraEnvFrom: the chart
+          # attaches envFrom only to the main container, so an init container
+          # sees none of it. Verified by rendering the chart — seed-agent-home
+          # has 0 envFrom entries. Without this the value would be empty and
+          # the ${VAR:?} guard below would abort the init container.
+          - name: HONCHO_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: hermes-secrets
+                key: HONCHO_API_KEY
         volumeMounts:
           - name: data
             mountPath: /opt/data
-          - name: honcho-client-secrets
-            mountPath: /honcho-client-secrets
-            readOnly: true
 
     extraVolumeMounts:
       # Managed scope directory. Hermes merges this config.yaml over every
