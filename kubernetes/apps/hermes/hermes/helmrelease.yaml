@@ -140,9 +140,9 @@ spec:
       # new agent its own release instead.
 
     extraVolumes:
-      - name: honcho-client-secrets
+      - name: hermes-secret
         secret:
-          secretName: honcho-client-secrets
+          secretName: hermes-secret
       # Managed scope: an IT-pinned config layer Hermes merges over every
       # profile's config.yaml, including profiles created at runtime. Used to
       # turn on the Honcho memory provider globally.
@@ -395,7 +395,7 @@ spec:
     # generation 14: added 9router-agent-keys envFrom (HERMES_9ROUTER_KEY),
     #   consumed by config.providers.9router.key_env.
     podAnnotations:
-      kalitsune.net/env-generation: "14"
+      kalitsune.net/env-generation: "15"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #

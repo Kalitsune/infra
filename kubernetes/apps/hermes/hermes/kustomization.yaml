@@ -4,10 +4,9 @@ resources:
   - namespace.yaml
   - helmrepository.yaml
   - ../secret.yaml
-  - matrix-secret-default.yaml
-  - matrix-recovery-secret.yaml
+  - matrix-secret.yaml
   - a2a-secret.yaml
-  - honcho-client-secret.yaml
+  - secret.yaml
   - managed-configmap.yaml
   - helmrelease.yaml
   - oauth2-secret.yaml
