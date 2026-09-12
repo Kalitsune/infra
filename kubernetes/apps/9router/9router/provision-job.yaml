@@ -46,8 +46,19 @@ spec:
         # ones that wrote the database.
         - name: mint
           image: docker.io/decolua/9router:0.5.69@sha256:47c17576ad49f0918d1a455dd412ae4509ee8bc742f17ba0b3327ddc70f35a40
+          # workingDir + NODE_PATH: the script lives on a ConfigMap mount at
+          # /scripts, and Node resolves `require()` by walking node_modules
+          # directories UP from the script's own location — /scripts has no
+          # such ancestor, so better-sqlite3 is invisible from there even
+          # though it ships in this image at /app/node_modules.
+          # Both are set because they fix different halves: workingDir alone
+          # does not help (resolution is relative to the FILE, not cwd), and
+          # NODE_PATH alone leaves relative paths resolving oddly.
+          workingDir: /app
           command: ["node", "/scripts/provision-keys.js"]
           env:
+            - name: NODE_PATH
+              value: /app/node_modules
             - name: NINEROUTER_AGENTS
               value: "hermes,homelabexpert"
           volumeMounts:
