@@ -1,0 +1,46 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: open-webui
+  namespace: open-webui
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: open-webui
+      version: ">=16.5.0 <17.0.0"
+      sourceRef:
+        kind: HelmRepository
+        name: open-webui
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    image:
+      repository: ghcr.io/open-webui/open-webui
+      tag: v0.11.3
+    persistence:
+      enabled: true
+      storageClass: local-path
+      size: 5Gi
+      accessModes:
+        - ReadWriteOnce
+    ollama:
+      enabled: false
+    pipelines:
+      enabled: false
+    service:
+      port: 80
+      type: ClusterIP
+    extraEnvVars:
+      - name: WEBUI_SECRET_KEY
+        valueFrom:
+          secretKeyRef:
+            name: open-webui-secret
+            key: WEBUI_SECRET_KEY
