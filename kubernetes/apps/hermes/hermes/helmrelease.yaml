@@ -292,8 +292,8 @@ spec:
       - name: API_SERVER_KEY
         valueFrom:
           secretKeyRef:
-            name: hermes-a2a
-            key: token
+            name: 9router-agent-keys
+            key: HERMES_9ROUTER_KEY
       - name: HERMES_DASHBOARD
         value: "1"
       - name: HERMES_DASHBOARD_HOST
