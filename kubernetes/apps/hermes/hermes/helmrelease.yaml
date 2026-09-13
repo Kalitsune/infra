@@ -289,11 +289,16 @@ spec:
         value: "0.0.0.0"
       - name: API_SERVER_PORT
         value: "8642"
-      - name: API_SERVER_KEY
-        valueFrom:
-          secretKeyRef:
-            name: 9router-agent-keys
-            key: HERMES_9ROUTER_KEY
+      # API_SERVER_KEY is deliberately NOT set here. The agent loads
+      # /opt/data/.env via python-dotenv, which OVERRIDES the container
+      # environment, so any value injected here is silently ignored and
+      # every caller gets 401 gateway_auth_failed. The operator-managed
+      # key in that .env is the only one that authenticates; the Open
+      # WebUI Secret mirrors it. Pointing this at a non-existent Secret
+      # key also yields CreateContainerConfigError and a Helm rollback
+      # loop that reverts every other mutable change in the release.
+      - name: API_SERVER_MODEL_NAME
+        value: "Hermes"
       - name: HERMES_DASHBOARD
         value: "1"
       - name: HERMES_DASHBOARD_HOST

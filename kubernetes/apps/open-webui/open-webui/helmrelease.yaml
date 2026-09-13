@@ -59,6 +59,14 @@ spec:
     extraEnvVars:
       - name: OAUTH_CODE_CHALLENGE_METHOD
         value: "S256"
+      # Open WebUI marks most settings PersistentConfig: on FIRST boot they
+      # are copied from env into the SQLite `config` table, and from then on
+      # the DB wins and the env var is ignored forever. That silently pinned
+      # openai.api_base_urls to api.openai.com with the built-in placeholder
+      # key, so no models ever appeared. false = re-read env every boot,
+      # which is what makes this GitOps-managed rather than click-ops.
+      - name: ENABLE_PERSISTENT_CONFIG
+        value: "false"
       - name: WEBUI_SECRET_KEY
         valueFrom:
           secretKeyRef:
