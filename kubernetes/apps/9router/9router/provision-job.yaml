@@ -20,15 +20,25 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: 9router-provision-keys
+  # The generation is part of the NAME, not just an annotation.
+  #
+  # A completed Job is immutable: Flux applies an updated spec without error
+  # but the Job never re-runs, so a bumped annotation alone silently does
+  # nothing and the change appears to have landed when it has not. The old
+  # workaround was `kubectl -n 9router delete job ...`, which AGENT.md rule 1
+  # forbids — git is the only write path.
+  #
+  # Encoding the generation in the name makes a bump create a NEW object.
+  # The Flux Kustomization for this app has prune: true, so the previous Job
+  # (and its pod) are garbage-collected on the same reconcile. No manual
+  # deletion, and the re-run is declared in git like everything else.
+  #
+  # To force a re-run: bump BOTH the name suffix and the annotation below.
+  #   gen 4: set authMode=both (ssoType alone does not enable OIDC)
+  #   gen 5: enable the Headroom token saver (compression sidecar)
+  name: 9router-provision-keys-5
   namespace: 9router
   annotations:
-    # Bump to force a re-run. A completed Job is immutable, so Flux cannot
-    # update it in place; changing this annotation is how a re-run is
-    # requested. The Job must then be deleted once so the new spec applies:
-    #   kubectl -n 9router delete job 9router-provision-keys
-    # generation 4: set authMode=both (ssoType alone does not enable OIDC).
-    # generation 5: enable the Headroom token saver (compression sidecar).
     kalitsune.net/provision-generation: "5"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
