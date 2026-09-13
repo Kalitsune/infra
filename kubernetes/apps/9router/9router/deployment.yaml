@@ -109,6 +109,80 @@ spec:
               memory: 256Mi
             limits:
               memory: 1Gi
+        # Headroom: compression-as-a-service. 9router POSTs the outbound
+        # message array to http://localhost:8787/v1/compress before routing it
+        # upstream, and sends the compressed result instead.
+        #
+        # SIDECAR, not its own Deployment, because /v1/compress is loopback
+        # gated: the proxy checks BOTH the client IP and the inbound Host
+        # header name loopback, and non-loopback callers get 404 (not 403 —
+        # the route stays invisible to scanners). Sharing a pod network
+        # namespace satisfies that with no opt-out flag, so
+        # HEADROOM_COMPRESS_ALLOW_REMOTE stays unset and the endpoint is
+        # unreachable from anywhere else in the cluster. A separate Deployment
+        # would need that flag plus a NetworkPolicy to be equally safe.
+        - name: headroom
+          # :latest is the only moving tag published; the version tags are
+          # git-sha based (sha-<short>), not semver. Pinned by digest so this
+          # is reproducible — bump the digest deliberately to upgrade.
+          image: ghcr.io/headroomlabs-ai/headroom:latest@sha256:35b799e94eef4644cb15a2e695b4b99698fe7668614623e9338cb10c10ececf9
+          # --host 127.0.0.1 keeps the listener off the pod IP entirely, so
+          # only the 9router container in this pod can reach it.
+          command:
+            - headroom
+            - proxy
+            - --host
+            - 127.0.0.1
+            - --port
+            - "8787"
+          env:
+            # The proxy writes its CCR store and caches under $HOME. The image
+            # has no writable home for uid 1000, so point it at the emptyDir
+            # below; without this it falls back to a read-only path and the
+            # compression pipeline degrades.
+            - name: HOME
+              value: /tmp/headroom
+            # Anonymous telemetry beacon off. Also covered by DO_NOT_TRACK.
+            - name: HEADROOM_BEACON
+              value: "off"
+            - name: DO_NOT_TRACK
+              value: "1"
+          volumeMounts:
+            - name: headroom-home
+              mountPath: /tmp/headroom
+          # Loopback-only listener, so the probes cannot use httpGet (the
+          # kubelet connects from outside the pod netns and would be refused).
+          # A python one-liner inside the container is the only honest check.
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import socket,sys
+                  s=socket.socket(); s.settimeout(3)
+                  sys.exit(s.connect_ex(("127.0.0.1",8787)))
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            # Compression is CPU- and memory-bound and runs per request. The
+            # limit is generous because an OOMKill here takes the whole pod's
+            # 9router container down with it — they share a lifecycle.
+            limits:
+              memory: 2Gi
       # No securityContext: the image entrypoint runs as root to chown the
       # mounted volume, then drops to the node user via su-exec. Cluster PSA
       # enforces baseline (restricted only warns), which permits that.
@@ -116,6 +190,12 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: 9router-data
+        # Scratch space for Headroom's CCR store and caches. Deliberately
+        # ephemeral: the originals it holds are only needed for the lifetime of
+        # a conversation, and 9router's own durable state lives on the PVC.
+        - name: headroom-home
+          emptyDir:
+            sizeLimit: 2Gi
 ---
 apiVersion: v1
 kind: Service

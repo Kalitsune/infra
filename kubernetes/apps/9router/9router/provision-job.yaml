@@ -28,7 +28,8 @@ metadata:
     # requested. The Job must then be deleted once so the new spec applies:
     #   kubectl -n 9router delete job 9router-provision-keys
     # generation 4: set authMode=both (ssoType alone does not enable OIDC).
-    kalitsune.net/provision-generation: "4"
+    # generation 5: enable the Headroom token saver (compression sidecar).
+    kalitsune.net/provision-generation: "5"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.

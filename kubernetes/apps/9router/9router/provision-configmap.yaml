@@ -236,3 +236,48 @@ data:
     } else {
       console.log("OIDC env not provided; leaving dashboard auth untouched");
     }
+
+    // ---------------------------------------------------------------------
+    // Token Saver (Headroom)
+    //
+    // Independent of the OIDC block above: the compression sidecar is part of
+    // the Deployment, not of dashboard auth, so it must not silently stop
+    // being configured if the OIDC env is ever removed.
+    //
+    // The sidecar runs in the 9router pod, so the built-in default
+    // headroomUrl (http://localhost:8787) is already correct and is left
+    // alone. Only headroomEnabled needs flipping: it defaults to false, which
+    // would leave the sidecar running and never called.
+    //
+    // headroomCompressUserMessages stays FALSE. Measured in-cluster against
+    // this exact image on a realistic agent conversation, all of the saving
+    // came from tool results (smart_crusher on JSON): 17880 -> 6118 tokens,
+    // a 66% reduction. A plain user turn was left untouched by the router
+    // (router:protected:system_message), so enabling user-message rewriting
+    // buys ~nothing and is the one place lossy compression would be felt.
+    //
+    // The pre-translate hook is fail-open: if the sidecar is down, slow, or
+    // returns garbage, 9router forwards the ORIGINAL messages. Enabling this
+    // cannot take routing down.
+    {
+      const sdb = new Database(DB);
+      const row = sdb.prepare("SELECT data FROM settings WHERE id = 1").get();
+      let settings = {};
+      if (row && row.data) {
+        try { settings = JSON.parse(row.data); } catch (_) { settings = {}; }
+      }
+
+      settings.headroomEnabled = true;
+      settings.headroomCompressUserMessages = false;
+      // Upstream default, applied per request. Compression of a large context
+      // measured ~1s in-cluster, so this fails open quickly if it wedges.
+      settings.headroomTimeoutMs = 3000;
+
+      sdb.prepare(
+        "INSERT INTO settings(id, data) VALUES(1, ?) " +
+        "ON CONFLICT(id) DO UPDATE SET data = excluded.data"
+      ).run(JSON.stringify(settings));
+      sdb.close();
+
+      console.log("Headroom token saver enabled (localhost:8787, tool results only)");
+    }
