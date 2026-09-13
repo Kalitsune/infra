@@ -134,13 +134,13 @@ spec:
         - skills
         - todo
 
-    # overwrite: false — config.yaml and SOUL.md are seeded on first boot and
-    # then left alone. The agent edits its own config at runtime (model
-    # switches, onboarding flags); overwrite:true would revert those on every
-    # reconcile.
+    # overwrite: true — config.yaml is rewritten from chart values on every pod
+    # restart. Model and provider config is managed in git via this HelmRelease,
+    # so runtime edits to config.yaml are not load-bearing and resetting them is
+    # acceptable. SOUL.md is handled separately by the sync-soul init container.
     bootstrap:
       enabled: true
-      overwrite: false
+      overwrite: true
 
     soul:
       text: |
