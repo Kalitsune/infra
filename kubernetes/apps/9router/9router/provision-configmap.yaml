@@ -210,10 +210,11 @@ data:
       //
       // "both" rather than "oidc": it keeps the INITIAL_PASSWORD fallback
       // working as a break-glass path. With "oidc", a misconfigured or
-      // unreachable Pocket ID locks the dashboard out completely, and the only
-      // way back in is editing SQLite by hand. The password is a 32-char
-      // random value from a SOPS-encrypted Secret, not a guessable default.
-      settings.authMode = "both";
+      // unreachable Pocket ID locks the dashboard out entirely — the only
+      // recovery is editing SQLite by hand (or re-running this Job after
+      // fixing the IdP). The operator confirmed they don't have a password
+      // and wants OIDC-only; the break-glass path is this Job itself.
+      settings.authMode = "oidc";
       settings.ssoType = "oidc";
       settings.oidcIssuerUrl = ISSUER;
       settings.oidcClientId = CLIENT_ID;

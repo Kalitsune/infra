@@ -565,4 +565,4 @@ spec:
     #   config.providers.9router.key_env.
     # generation 5: model provider switched to 9router (cc/claude-opus-5).
     podAnnotations:
-      kalitsune.net/env-generation: "5"
+      kalitsune.net/env-generation: "6"

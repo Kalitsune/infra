@@ -36,10 +36,11 @@ metadata:
   # To force a re-run: bump BOTH the name suffix and the annotation below.
   #   gen 4: set authMode=both (ssoType alone does not enable OIDC)
   #   gen 5: enable the Headroom token saver (compression sidecar)
-  name: 9router-provision-keys-5
+  #   gen 6: authMode both -> oidc (operator has no password, wants SSO-only)
+  name: 9router-provision-keys-6
   namespace: 9router
   annotations:
-    kalitsune.net/provision-generation: "5"
+    kalitsune.net/provision-generation: "6"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.
