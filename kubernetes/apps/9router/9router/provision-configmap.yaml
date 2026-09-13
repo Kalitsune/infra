@@ -58,8 +58,28 @@ data:
       laptop: "LAPTOP_9ROUTER_KEY",
     };
 
+    // Consumers that are NOT Hermes agents get their own Secret in their own
+    // namespace instead of a key inside 9router-agent-keys. machineId -> the
+    // target Secret, its namespace, and the key name the app expects.
+    //
+    // Honcho reads LLM_OPENAI_API_KEY (pydantic env_prefix "LLM_" + the
+    // OPENAI_API_KEY field) and takes it via envFrom, so the key name here is
+    // the literal variable name its process needs — not a *_9ROUTER_KEY
+    // label. It is a separate machineId so revoking Honcho in the dashboard
+    // cannot take the chat agents down with it.
+    const FOREIGN_SECRETS = {
+      honcho: {
+        name: "9router-honcho-key",
+        namespace: "honcho",
+        key: "LLM_OPENAI_API_KEY",
+      },
+    };
+
     // Accumulates base64 key values for the Secret manifest written at the end.
     const secretData = {};
+    // Same, for consumers that get their own Secret elsewhere:
+    // machineId -> base64 key value.
+    const foreignData = {};
 
     function generate(machineId) {
       const alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -129,25 +149,54 @@ data:
       const file = path.join(OUT, `${agent}.key`);
       fs.writeFileSync(file, key, { mode: 0o600 });
       console.log(`${agent}: wrote ${file} (${key.length} chars)`);
-      secretData[ENV_NAMES[agent] || `${agent.toUpperCase()}_9ROUTER_KEY`] =
-        Buffer.from(key, "utf8").toString("base64");
+
+      if (FOREIGN_SECRETS[agent]) {
+        foreignData[agent] = Buffer.from(key, "utf8").toString("base64");
+      } else {
+        secretData[ENV_NAMES[agent] || `${agent.toUpperCase()}_9ROUTER_KEY`] =
+          Buffer.from(key, "utf8").toString("base64");
+      }
     }
 
     // Emit the Secret manifest for the publish step. That container runs a
     // DISTROLESS kubectl image with no shell, so it cannot pipe
     // `create --dry-run | apply`; it applies this file instead, which is
     // idempotent on re-run.
-    const manifest = [
-      "apiVersion: v1",
-      "kind: Secret",
-      "metadata:",
-      "  name: 9router-agent-keys",
-      "  namespace: hermes",
-      "type: Opaque",
-      "data:",
-      ...Object.entries(secretData).map(([k, v]) => `  ${k}: ${v}`),
-      "",
-    ].join("\n");
+    //
+    // Multi-document: one Secret for the Hermes agents plus one per foreign
+    // consumer. `kubectl apply -f` reads all documents from the single file,
+    // so no extra container or argument is needed.
+    const docs = [
+      [
+        "apiVersion: v1",
+        "kind: Secret",
+        "metadata:",
+        "  name: 9router-agent-keys",
+        "  namespace: hermes",
+        "type: Opaque",
+        "data:",
+        ...Object.entries(secretData).map(([k, v]) => `  ${k}: ${v}`),
+      ].join("\n"),
+    ];
+
+    for (const [agent, b64] of Object.entries(foreignData)) {
+      const target = FOREIGN_SECRETS[agent];
+      docs.push([
+        "apiVersion: v1",
+        "kind: Secret",
+        "metadata:",
+        `  name: ${target.name}`,
+        `  namespace: ${target.namespace}`,
+        "type: Opaque",
+        "data:",
+        `  ${target.key}: ${b64}`,
+      ].join("\n"));
+      console.log(
+        `${agent}: queued Secret ${target.namespace}/${target.name}`
+      );
+    }
+
+    const manifest = docs.join("\n---\n") + "\n";
     fs.writeFileSync(path.join(OUT, "secret.yaml"), manifest, { mode: 0o600 });
     console.log("wrote secret.yaml for the publish step");
 

@@ -14,6 +14,14 @@ spec:
     # Postgres uses local-path, not the NFS class, so this does not depend on
     # democratic-csi-nfs the way hermes does.
     - name: local-path-provisioner
+    # Honcho's LLM backend is 9Router, and the API key it authenticates with
+    # is minted by 9router's provisioning Job into honcho/9router-honcho-key.
+    # envFrom is read once at container start, so a Honcho pod that starts
+    # before that Job has run comes up with no key and fails every LLM call
+    # until something restarts it. 9router's Kustomization sets wait: true,
+    # which includes Job completion, so depending on it orders the two
+    # correctly. Not circular: 9router depends on nothing.
+    - name: 9router
   decryption:
     provider: sops
     secretRef:

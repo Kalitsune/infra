@@ -47,3 +47,40 @@ roleRef:
   kind: Role
   name: 9router-key-writer
   apiGroup: rbac.authorization.k8s.io
+---
+# Honcho consumes 9Router as its OpenAI-compatible LLM backend, so the same
+# Job mints it a key. Honcho's process reads LLM_OPENAI_API_KEY via envFrom,
+# which means the value has to land in a Secret in ITS namespace — hence a
+# second, identical binding here rather than another key inside
+# 9router-agent-keys.
+#
+# Deliberately a separate Secret name from honcho-secrets: that one is
+# SOPS-encrypted in git and owned by Flux. Writing a Job-generated value into
+# it would make the two writers fight on every reconcile.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: 9router-key-writer
+  namespace: honcho
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["9router-honcho-key"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: 9router-key-writer
+  namespace: honcho
+subjects:
+  - kind: ServiceAccount
+    name: 9router-provisioner
+    namespace: 9router
+roleRef:
+  kind: Role
+  name: 9router-key-writer
+  apiGroup: rbac.authorization.k8s.io

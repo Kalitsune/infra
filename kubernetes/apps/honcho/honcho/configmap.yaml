@@ -23,35 +23,73 @@ data:
   AUTH_USE_AUTH: "true"
 
   # ---------------------------------------------------------------------
-  # Models — Gemini transport throughout, reusing the existing Google key.
+  # Models — 9Router (OpenAI-compatible) for every text feature.
   # ---------------------------------------------------------------------
-  # Every text feature must support tool calling; the Flash models do.
-  # thinking_budget_tokens is deliberately left unset: Gemini 3.x models use
-  # thinking levels rather than a token budget.
-  DERIVER_MODEL_CONFIG__TRANSPORT: "gemini"
-  DERIVER_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  # WHY NOT THE DIRECT GEMINI TRANSPORT ANY MORE
+  #
+  # The Google key is on the free tier, which allows 20 generate_content
+  # requests per DAY per model. The deriver burned through that and then
+  # failed every representation batch with:
+  #   google.genai.errors.ClientError: 429 RESOURCE_EXHAUSTED
+  #   Quota exceeded ... limit: 20, model: gemini-3.6-flash
+  # Reads kept working, so the breakage was invisible from the client side —
+  # only the derived layer (representations, summaries) silently stopped
+  # updating. 9Router fans out across several upstream accounts, so routing
+  # through it removes the per-model daily cap.
+  #
+  # "fast-af" is a 9Router *combo*, not an upstream model id: it load-balances
+  # cc/claude-haiku-4-5 and ag/gemini-3.8-flash-low. Honcho does not validate
+  # model strings against any known list, so the combo name passes through
+  # verbatim. The three combos are high-effort / medium-effort / fast-af; this
+  # is the light one, which is what these background jobs want.
+  #
+  # VERIFIED against the live combo before switching (all HTTP 200):
+  #   - `"stream": false` returns a plain JSON body, not SSE
+  #   - tool calling works: finish_reason "tool_calls" with a parsed arguments
+  #     object — the deriver requires this
+  #   - response_format json_schema (strict) returns schema-conforming JSON
+  # Do not assume a different combo behaves the same; re-run those three
+  # probes before repointing anything else here.
+  DERIVER_MODEL_CONFIG__TRANSPORT: "openai"
+  DERIVER_MODEL_CONFIG__MODEL: "fast-af"
 
-  SUMMARY_MODEL_CONFIG__TRANSPORT: "gemini"
-  SUMMARY_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  SUMMARY_MODEL_CONFIG__TRANSPORT: "openai"
+  SUMMARY_MODEL_CONFIG__MODEL: "fast-af"
 
-  DREAM_DEDUCTION_MODEL_CONFIG__TRANSPORT: "gemini"
-  DREAM_DEDUCTION_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
-  DREAM_INDUCTION_MODEL_CONFIG__TRANSPORT: "gemini"
-  DREAM_INDUCTION_MODEL_CONFIG__MODEL: "gemini-3.6-flash"
+  DREAM_DEDUCTION_MODEL_CONFIG__TRANSPORT: "openai"
+  DREAM_DEDUCTION_MODEL_CONFIG__MODEL: "fast-af"
+  DREAM_INDUCTION_MODEL_CONFIG__TRANSPORT: "openai"
+  DREAM_INDUCTION_MODEL_CONFIG__MODEL: "fast-af"
 
   # Dialectic levels have no shared default — each level carries its own
   # model config, and startup fails with "Missing configuration for reasoning
   # levels" if any of the five is left on a different transport by accident.
-  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT: "gemini"
-  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
-  DIALECTIC_LEVELS__low__MODEL_CONFIG__TRANSPORT: "gemini"
-  DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
-  DIALECTIC_LEVELS__medium__MODEL_CONFIG__TRANSPORT: "gemini"
-  DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
-  DIALECTIC_LEVELS__high__MODEL_CONFIG__TRANSPORT: "gemini"
-  DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL: "gemini-3.6-flash"
-  DIALECTIC_LEVELS__max__MODEL_CONFIG__TRANSPORT: "gemini"
-  DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL: "gemini-3.7-flash"
+  #
+  # All five sit on fast-af deliberately. The levels used to encode effort by
+  # picking a bigger Gemini model; with 9Router the combo itself is the effort
+  # dial, so raising a level means naming medium-effort/high-effort here
+  # rather than an upstream model id.
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__minimal__MODEL_CONFIG__MODEL: "fast-af"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__low__MODEL_CONFIG__MODEL: "fast-af"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__medium__MODEL_CONFIG__MODEL: "fast-af"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__high__MODEL_CONFIG__MODEL: "fast-af"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__TRANSPORT: "openai"
+  DIALECTIC_LEVELS__max__MODEL_CONFIG__MODEL: "fast-af"
+
+  # Points the OpenAI transport at 9Router instead of api.openai.com. This is
+  # the global default client (src/llm/registry.py builds it from
+  # settings.LLM.OPENAI_BASE_URL), so every module above inherits it and no
+  # per-module override block is needed.
+  #
+  # In-cluster Service DNS, not the public hostname: the public route sits
+  # behind oauth2-proxy, which would answer a machine caller with an HTML
+  # login page. The /v1 prefix routes DIRECT in 9Router — it is gated by the
+  # app's own API key rather than the SSO proxy.
+  LLM_OPENAI_BASE_URL: "http://9router.9router.svc.cluster.local:20128/v1"
 
   # ---------------------------------------------------------------------
   # Embeddings
@@ -64,6 +102,13 @@ data:
   # migration builds the schema with, and the startup validator crashes the
   # process if config and physical schema disagree — so changing this after
   # first deploy means re-embedding, not just an edit here.
+  # Embeddings stay on the DIRECT Gemini transport, not 9Router. 9Router does
+  # not serve embeddings — /v1/embeddings answers:
+  #   400 {"error":{"message":"No credentials for provider: gemini"}}
+  # so this is the one module that still spends the Google free-tier quota.
+  # It is a much lighter caller than the deriver (one short request per
+  # message, no tool loop) and embedding quota is metered separately from
+  # generate_content, which is what ran out.
   EMBEDDING_MODEL_CONFIG__TRANSPORT: "gemini"
   EMBEDDING_MODEL_CONFIG__MODEL: "gemini-embedding-2"
   EMBEDDING_VECTOR_DIMENSIONS: "1536"

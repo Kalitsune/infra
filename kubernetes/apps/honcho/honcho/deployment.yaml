@@ -25,6 +25,13 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: honcho-api
+      annotations:
+        # A ConfigMap edit does NOT restart pods on its own: envFrom is read
+        # once at container start, so model/transport changes would sit in the
+        # ConfigMap unread while the old process kept using the old provider.
+        # Bump this whenever honcho-config changes to force a rollout.
+        #   1: 9Router (fast-af) replaces the direct Gemini transport
+        kalitsune.net/config-generation: "1"
     spec:
       # No pod-level runAsUser: the two containers run as DIFFERENT uids
       # (honcho 100, nginx-unprivileged 101) and forcing either one onto the
@@ -52,6 +59,14 @@ spec:
                 name: honcho-config
             - secretRef:
                 name: honcho-secrets
+            # Minted by the 9router provisioning Job, not by Flux — it holds
+            # LLM_OPENAI_API_KEY for the 9Router backend. optional: true so a
+            # fresh cluster can bring Honcho up before that Job has run;
+            # without it the pod sits in CreateContainerConfigError and the
+            # two apps deadlock on each other's readiness.
+            - secretRef:
+                name: 9router-honcho-key
+                optional: true
           ports:
             - name: http
               containerPort: 8000
@@ -176,6 +191,11 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: honcho-deriver
+      annotations:
+        # Must be bumped together with the api Deployment above — see the
+        # comment there. Leaving the deriver un-rolled is the worse half of
+        # the bug: it is the process that actually spends the LLM quota.
+        kalitsune.net/config-generation: "1"
     spec:
       containers:
         - name: deriver
@@ -189,6 +209,12 @@ spec:
                 name: honcho-config
             - secretRef:
                 name: honcho-secrets
+            # See the api container: same Job-minted 9Router key. The deriver
+            # is the heaviest LLM caller of the two, so this is the container
+            # the quota fix is really for.
+            - secretRef:
+                name: 9router-honcho-key
+                optional: true
           resources:
             requests:
               cpu: 100m

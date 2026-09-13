@@ -37,10 +37,11 @@ metadata:
   #   gen 4: set authMode=both (ssoType alone does not enable OIDC)
   #   gen 5: enable the Headroom token saver (compression sidecar)
   #   gen 6: authMode both -> oidc (operator has no password, wants SSO-only)
-  name: 9router-provision-keys-6
+  #   gen 7: mint a key for honcho (Secret honcho/9router-honcho-key)
+  name: 9router-provision-keys-7
   namespace: 9router
   annotations:
-    kalitsune.net/provision-generation: "6"
+    kalitsune.net/provision-generation: "7"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.
@@ -78,7 +79,7 @@ spec:
             #   kubectl -n hermes get secret 9router-agent-keys \
             #     -o jsonpath='{.data.LAPTOP_9ROUTER_KEY}' | base64 -d
             - name: NINEROUTER_AGENTS
-              value: "hermes,homelabexpert,laptop"
+              value: "hermes,homelabexpert,laptop,honcho"
             # OIDC dashboard login, using the SAME Pocket ID client that
             # oauth2-proxy already uses — same Secret, no second client to
             # rotate. Pocket ID allows multiple redirect URIs per client, so
