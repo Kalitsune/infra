@@ -57,6 +57,10 @@ spec:
         providerUrl: "https://id.kalitsune.net/.well-known/openid-configuration"
         providerName: "Pocket ID"
     extraEnvVars:
+      - name: ENABLE_SIGNUP
+        value: "false"
+      - name: ENABLE_LOGIN_FORM
+        value: "false"
       - name: OAUTH_CODE_CHALLENGE_METHOD
         value: "S256"
       # Sync avatar from Pocket ID (the "picture" claim) on every login
