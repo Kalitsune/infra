@@ -218,8 +218,16 @@ spec:
             # "invalid value ... must be IP or unique node name" and the
             # container crashloops. The exit node is applied by the postStart
             # hook below, once login has populated the netmap.
+            # --reset is required because the postStart hook below writes prefs
+            # (exit node, LAN access) that persist in the state Secret. On the
+            # next start `tailscale up` sees those as non-default settings it
+            # was not told about and refuses:
+            #   "changing settings via 'tailscale up' requires mentioning all
+            #    non-default flags"
+            # which crashloops the container. --reset makes boot authoritative:
+            # prefs always start clean, then the hook reapplies the exit node.
             - name: TS_EXTRA_ARGS
-              value: --hostname=download-stack
+              value: --reset --hostname=download-stack
             - name: TS_USERSPACE
               value: "false"
             # Talos runs a pure-eBPF Cilium and ships no ip_tables module, so
