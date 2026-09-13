@@ -49,6 +49,8 @@ spec:
         providerUrl: "https://id.kalitsune.net/.well-known/openid-configuration"
         providerName: "Pocket ID"
     extraEnvVars:
+      - name: OAUTH_CODE_CHALLENGE_METHOD
+        value: "S256"
       - name: WEBUI_SECRET_KEY
         valueFrom:
           secretKeyRef:
