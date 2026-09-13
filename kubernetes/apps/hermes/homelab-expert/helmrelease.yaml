@@ -98,13 +98,9 @@ spec:
       # Routed through 9Router — see the sibling hermes release for the full
       # reasoning. Upstream credentials live in 9Router's provider connections;
       # this agent presents only its own minted key.
-      #
-      # opus rather than sonnet, matching what this agent ran on before.
-      # Verified serving before this change: cc/claude-opus-5 returns 200 with
-      # a real streamed completion.
       model:
         provider: 9router
-        default: cc/claude-opus-5
+        default: max-effort
 
       providers:
         9router:

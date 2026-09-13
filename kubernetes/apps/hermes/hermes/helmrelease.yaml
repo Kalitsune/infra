@@ -82,12 +82,9 @@ spec:
       # holds the real credentials — one place to rotate, and per-agent keys
       # that can be revoked individually.
       #
-      # The `cc/` prefix is 9Router's namespacing for the Claude connection.
-      # Verified serving before this change: /v1/chat/completions returns 200
-      # with a real streamed completion for cc/claude-sonnet-5.
       model:
         provider: 9router
-        default: cc/claude-sonnet-5
+        default: medium-effort
 
       providers:
         9router:
