@@ -48,7 +48,7 @@ spec:
       type: ClusterIP
     sso:
       enabled: true
-      enableSignup: true
+      enableSignup: false
       oidc:
         enabled: true
         clientExistingSecret: "oauth2-proxy-secret"
@@ -58,8 +58,6 @@ spec:
         providerName: "Pocket ID"
     extraEnvVars:
       - name: ENABLE_SIGNUP
-        value: "false"
-      - name: ENABLE_OAUTH_SIGNUP
         value: "false"
       - name: ENABLE_LOGIN_FORM
         value: "false"
