@@ -53,7 +53,7 @@ spec:
             - --code-challenge-method=S256
           envFrom:
             - secretRef:
-                name: oauth2-proxy-secret
+                name: oauth2-proxy-secret-jellyseerr
           ports:
             - containerPort: 4180
               name: proxy
