@@ -59,6 +59,8 @@ spec:
     extraEnvVars:
       - name: ENABLE_SIGNUP
         value: "false"
+      - name: ENABLE_OAUTH_SIGNUP
+        value: "false"
       - name: ENABLE_LOGIN_FORM
         value: "false"
       - name: OAUTH_CODE_CHALLENGE_METHOD
