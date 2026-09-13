@@ -42,31 +42,10 @@ spec:
   chart:
     spec:
       chart: hermes-agent
-      # PINNED to 1.13.x, deliberately — not a lazy range.
-      #
-      # Chart 1.14.0 bumps the labels INSIDE volumeClaimTemplates
-      # (helm.sh/chart and app.kubernetes.io/version). volumeClaimTemplates is
-      # immutable on a StatefulSet, so the upgrade fails with:
-      #
-      #   StatefulSet.apps "homelab-expert" is invalid: spec: Forbidden:
-      #   updates to statefulset spec for fields other than 'replicas',
-      #   'ordinals', 'template', 'updateStrategy', 'revisionHistoryLimit',
-      #   'persistentVolumeClaimRetentionPolicy' and 'minReadySeconds'
-      #
-      # Helm then rolls back to 1.13.0 and retries forever, and — the part
-      # that actually bites — every MUTABLE change in the same release is
-      # rolled back with it. That is why env-generation 4 and the 9router
-      # envFrom never reached the pod while this loop was running.
-      #
-      # `hermes` escaped only by timing: its live VCT labels still said
-      # 1.12.1, so its own 1.14.0 upgrade did not touch that field.
-      #
-      # Moving to 1.14.x requires recreating the StatefulSet with
-      # --cascade=orphan (the PVC is Retain, so no data is lost). That is a
-      # live-cluster mutation, which rule 1 of AGENT.md forbids the agent from
-      # performing — it is an operator action. Until then this pin keeps the
-      # rendered immutable fields byte-identical to the live object.
-      version: 1.13.x
+      # Matches the sibling hermes release: open to 1.14.x with the VCT labels
+      # frozen via postRenderers below. See that release for the full reasoning
+      # on why the labels must be frozen rather than left to track the chart.
+      version: 1.14.x
       sourceRef:
         kind: HelmRepository
         name: hermes-agent
@@ -79,6 +58,26 @@ spec:
     remediation:
       strategy: rollback
       retries: 3
+
+  # Freeze the two chart-version labels the chart stamps onto the PVC template.
+  # The live StatefulSet has these values (verified with kubectl get sts):
+  #   helm.sh/chart: hermes-agent-1.13.0
+  #   app.kubernetes.io/version: v2026.8.31
+  # See the sibling hermes release for the full explanation.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              version: v1
+              kind: StatefulSet
+              name: homelab-expert
+            patch: |
+              - op: replace
+                path: /spec/volumeClaimTemplates/0/metadata/labels/helm.sh~1chart
+                value: hermes-agent-1.13.0
+              - op: replace
+                path: /spec/volumeClaimTemplates/0/metadata/labels/app.kubernetes.io~1version
+                value: v2026.8.31
 
   values:
     # Keep resource names short and stable. Without this the chart would
