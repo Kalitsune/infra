@@ -41,7 +41,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://requests.kalitsune.net/oauth2/callback
+            - --redirect-url=https://requests.watch.kalitsune.net/oauth2/callback
             - --upstream=http://127.0.0.1:5055
             - --http-address=0.0.0.0:4180
             - --email-domain=*
@@ -103,7 +103,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - requests.kalitsune.net
+    - requests.watch.kalitsune.net
   rules:
     - backendRefs:
         - name: jellyseerr
