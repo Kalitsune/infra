@@ -99,7 +99,7 @@ spec:
       # this agent presents only its own minted key.
       model:
         provider: 9router
-        default: max-effort
+        default: high-effort
 
       providers:
         9router:
