@@ -46,7 +46,7 @@ spec:
         clientExistingSecret: "oauth2-proxy-secret"
         clientIdExistingSecretKey: "clientId"
         clientExistingSecretKey: "clientSecret"
-        providerUrl: "https://id.kalitsune.net"
+        providerUrl: "https://id.kalitsune.net/.well-known/openid-configuration"
         providerName: "Pocket ID"
     extraEnvVars:
       - name: WEBUI_SECRET_KEY
