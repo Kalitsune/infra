@@ -31,7 +31,7 @@ You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a
 
 # Repository Discoveries
 
-- **Open WebUI**: SQLite is default, needs `local-path` PVC. Needs `WEBUI_SECRET_KEY` randomly generated into a SOPS secret.
+- **Open WebUI**: SQLite is default, needs `local-path` PVC. Needs `WEBUI_SECRET_KEY` randomly generated into a SOPS secret. Pocket ID SSO needs `OAUTH_CODE_CHALLENGE_METHOD: S256` (PKCE) in extraEnvVars.
 - **DNS**: Use CNAME to `lab.kalitsune.net` for exposed services.
 - **Secrets**: Generate SOPS secrets with `scripts/new-sops-secret.sh` from the `gitops-cluster-operations` skill.
 
