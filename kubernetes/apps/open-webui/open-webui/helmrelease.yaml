@@ -61,6 +61,8 @@ spec:
         value: "false"
       - name: ENABLE_LOGIN_FORM
         value: "false"
+      - name: ENABLE_LOCAL_WEB_FETCH
+        value: "true"
       - name: OAUTH_CODE_CHALLENGE_METHOD
         value: "S256"
       # Sync avatar from Pocket ID (the "picture" claim) on every login
