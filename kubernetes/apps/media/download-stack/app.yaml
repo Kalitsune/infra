@@ -222,6 +222,14 @@ spec:
               value: --hostname=download-stack
             - name: TS_USERSPACE
               value: "false"
+            # Talos runs a pure-eBPF Cilium and ships no ip_tables module, so
+            # tailscale's default iptables path dies with
+            #   "can't initialize iptables table `filter'"
+            #   "modprobe: Module ip_tables not found"
+            # nftables is built into the Talos kernel and is the only firewall
+            # backend that works here.
+            - name: TS_DEBUG_FIREWALL_MODE
+              value: nftables
           lifecycle:
             postStart:
               exec:
@@ -229,10 +237,18 @@ spec:
                   - /bin/sh
                   - -c
                   - |
-                    # Wait for login to populate the netmap, then pin egress to
-                    # the Mullvad exit node. Retries because the netmap can take
-                    # a few seconds to arrive after the authkey is accepted.
-                    for i in $(seq 1 60); do
+                    # Pin egress to the Mullvad exit node once login has
+                    # populated the netmap (it is empty at boot, which is why
+                    # this is not passed to `tailscale up`).
+                    #
+                    # Deliberately never fails the container. Mullvad access is
+                    # granted per-device in the admin console, so a brand new
+                    # node has no Mullvad peers in its netmap until someone
+                    # grants it a licence slot. Exiting non-zero there would
+                    # crashloop the whole pod -- qBittorrent, all four *arr
+                    # apps and flaresolverr -- over a console setting. Warn
+                    # loudly in the log instead and let the stack run.
+                    for i in $(seq 1 30); do
                       if tailscale set \
                            --exit-node="$TS_EXIT_NODE" \
                            --exit-node-allow-lan-access 2>/dev/null; then
@@ -241,8 +257,11 @@ spec:
                       fi
                       sleep 2
                     done
-                    echo "FAILED to set exit node $TS_EXIT_NODE after 120s" >&2
-                    exit 1
+                    echo "WARNING: could not set exit node '$TS_EXIT_NODE'." >&2
+                    echo "WARNING: traffic is NOT going through Mullvad." >&2
+                    echo "WARNING: grant this device Mullvad access at" >&2
+                    echo "WARNING: login.tailscale.com/admin/settings/general" >&2
+                    exit 0
       volumes:
         - name: media-storage
           persistentVolumeClaim:
