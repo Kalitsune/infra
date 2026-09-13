@@ -211,19 +211,38 @@ spec:
                 configMapKeyRef:
                   name: tailscale-exit-node
                   key: exitNode
-            # --exit-node is set here rather than by a later `tailscale up`,
-            # so the exit node is in force from the first packet. There is no
-            # window where torrent traffic could leave on the bare uplink.
-            #
-            # --exit-node-allow-lan-access keeps the cluster reachable: without
-            # it the exit node swallows traffic to the pod and service CIDRs,
-            # kube-proxy could not reach the app ports, and every Service
-            # backed by this pod would time out. This is the direct equivalent
-            # of gluetun's FIREWALL_OUTBOUND_SUBNETS.
+            # NOT passed to `tailscale up`: --exit-node resolves its argument
+            # against the current netmap, and at first boot the netmap is empty
+            # because login has not happened yet. `tailscale up
+            # --exit-node=ch-zrh-wg-001.mullvad.ts.net` therefore dies with
+            # "invalid value ... must be IP or unique node name" and the
+            # container crashloops. The exit node is applied by the postStart
+            # hook below, once login has populated the netmap.
             - name: TS_EXTRA_ARGS
-              value: --exit-node=$(TS_EXIT_NODE) --exit-node-allow-lan-access --hostname=download-stack
+              value: --hostname=download-stack
             - name: TS_USERSPACE
               value: "false"
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    # Wait for login to populate the netmap, then pin egress to
+                    # the Mullvad exit node. Retries because the netmap can take
+                    # a few seconds to arrive after the authkey is accepted.
+                    for i in $(seq 1 60); do
+                      if tailscale set \
+                           --exit-node="$TS_EXIT_NODE" \
+                           --exit-node-allow-lan-access 2>/dev/null; then
+                        echo "exit node set to $TS_EXIT_NODE"
+                        exit 0
+                      fi
+                      sleep 2
+                    done
+                    echo "FAILED to set exit node $TS_EXIT_NODE after 120s" >&2
+                    exit 1
       volumes:
         - name: media-storage
           persistentVolumeClaim:
