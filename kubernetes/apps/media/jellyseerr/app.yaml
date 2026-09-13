@@ -1,0 +1,91 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jellyseerr-config
+  namespace: media
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jellyseerr
+  namespace: media
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: jellyseerr
+  template:
+    metadata:
+      labels:
+        app: jellyseerr
+    spec:
+      containers:
+        - name: jellyseerr
+          image: fallenbagel/jellyseerr:latest
+          env:
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            - containerPort: 5055
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
+        - name: oauth2-proxy
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://id.kalitsune.net
+            - --redirect-url=https://requests.kalitsune.net/oauth2/callback
+            - --upstream=http://127.0.0.1:5055
+            - --http-address=0.0.0.0:4180
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-name=_oauth2_proxy_jellyseerr
+            - --session-store-type=cookie
+            - --banner=-
+            - --skip-provider-button=true
+            - --code-challenge-method=S256
+          envFrom:
+            - secretRef:
+                name: oauth2-proxy-secret
+          ports:
+            - containerPort: 4180
+              name: proxy
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: jellyseerr-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: jellyseerr
+  namespace: media
+spec:
+  selector:
+    app: jellyseerr
+  ports:
+    - port: 4180
+      targetPort: 4180
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: jellyseerr
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - requests.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: jellyseerr
+          port: 4180

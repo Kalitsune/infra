@@ -1,0 +1,454 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: qbittorrent-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: radarr-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: sonarr-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: prowlarr-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: bazarr-config
+  namespace: media
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: download-stack
+  namespace: media
+spec:
+  replicas: 1
+  serviceName: download-stack
+  selector:
+    matchLabels:
+      app: download-stack
+  template:
+    metadata:
+      labels:
+        app: download-stack
+    spec:
+      containers:
+        - name: qbittorrent
+          image: lscr.io/linuxserver/qbittorrent:latest
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+            - name: WEBUI_PORT
+              value: "8080"
+            - name: TORRENTING_PORT
+              value: "6881"
+          ports:
+            - containerPort: 8080
+          volumeMounts:
+            - name: qbittorrent-config
+              mountPath: /config
+            - name: media-storage
+              mountPath: /downloads
+        - name: radarr
+          image: lscr.io/linuxserver/radarr:latest
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            - containerPort: 7878
+          volumeMounts:
+            - name: radarr-config
+              mountPath: /config
+            - name: media-storage
+              mountPath: /downloads
+        - name: sonarr
+          image: lscr.io/linuxserver/sonarr:latest
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            - containerPort: 8989
+          volumeMounts:
+            - name: sonarr-config
+              mountPath: /config
+            - name: media-storage
+              mountPath: /downloads
+        - name: prowlarr
+          image: lscr.io/linuxserver/prowlarr:latest
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            - containerPort: 9696
+          volumeMounts:
+            - name: prowlarr-config
+              mountPath: /config
+        - name: bazarr
+          image: lscr.io/linuxserver/bazarr:latest
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            - containerPort: 6767
+          volumeMounts:
+            - name: bazarr-config
+              mountPath: /config
+            - name: media-storage
+              mountPath: /downloads
+        - name: flaresolverr
+          image: ghcr.io/flaresolverr/flaresolverr:latest
+          env:
+            - name: TZ
+              value: Europe/Paris
+            - name: LOG_LEVEL
+              value: info
+        - name: gluetun
+          image: qmcgaw/gluetun:latest
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          env:
+            - name: VPN_SERVICE_PROVIDER
+              value: mullvad
+            - name: VPN_TYPE
+              value: wireguard
+            - name: SERVER_CITIES
+              value: Zurich
+            - name: OWNED_ONLY
+              value: "yes"
+            - name: WIREGUARD_PRIVATE_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: wg-secret
+                  key: WG_KEY
+            - name: WIREGUARD_ADDRESSES
+              value: 10.72.212.153/32
+        - name: oauth2-proxy-radarr
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://id.kalitsune.net
+            - --redirect-url=https://radarr.download.kalitsune.net/oauth2/callback
+            - --upstream=http://127.0.0.1:7878
+            - --http-address=0.0.0.0:4181
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-name=_oauth2_proxy_radarr
+            - --session-store-type=cookie
+            - --banner=-
+            - --skip-provider-button=true
+            - --code-challenge-method=S256
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookieSecret
+          ports:
+            - name: proxy-radarr
+              containerPort: 4181
+        - name: oauth2-proxy-sonarr
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://id.kalitsune.net
+            - --redirect-url=https://sonarr.download.kalitsune.net/oauth2/callback
+            - --upstream=http://127.0.0.1:8989
+            - --http-address=0.0.0.0:4182
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-name=_oauth2_proxy_sonarr
+            - --session-store-type=cookie
+            - --banner=-
+            - --skip-provider-button=true
+            - --code-challenge-method=S256
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookieSecret
+          ports:
+            - name: proxy-sonarr
+              containerPort: 4182
+        - name: oauth2-proxy-prowlarr
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://id.kalitsune.net
+            - --redirect-url=https://prowlarr.download.kalitsune.net/oauth2/callback
+            - --upstream=http://127.0.0.1:9696
+            - --http-address=0.0.0.0:4183
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-name=_oauth2_proxy_prowlarr
+            - --session-store-type=cookie
+            - --banner=-
+            - --skip-provider-button=true
+            - --code-challenge-method=S256
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookieSecret
+          ports:
+            - name: proxy-prowlarr
+              containerPort: 4183
+        - name: oauth2-proxy-bazarr
+          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+          args:
+            - --provider=oidc
+            - --oidc-issuer-url=https://id.kalitsune.net
+            - --redirect-url=https://bazarr.download.kalitsune.net/oauth2/callback
+            - --upstream=http://127.0.0.1:6767
+            - --http-address=0.0.0.0:4184
+            - --email-domain=*
+            - --cookie-secure=true
+            - --cookie-name=_oauth2_proxy_bazarr
+            - --session-store-type=cookie
+            - --banner=-
+            - --skip-provider-button=true
+            - --code-challenge-method=S256
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: cookieSecret
+          ports:
+            - name: proxy-bazarr
+              containerPort: 4184
+      volumes:
+        - name: media-storage
+          persistentVolumeClaim:
+            claimName: media-storage
+        - name: qbittorrent-config
+          persistentVolumeClaim:
+            claimName: qbittorrent-config
+        - name: radarr-config
+          persistentVolumeClaim:
+            claimName: radarr-config
+        - name: sonarr-config
+          persistentVolumeClaim:
+            claimName: sonarr-config
+        - name: prowlarr-config
+          persistentVolumeClaim:
+            claimName: prowlarr-config
+        - name: bazarr-config
+          persistentVolumeClaim:
+            claimName: bazarr-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: download-stack
+  namespace: media
+spec:
+  selector:
+    app: download-stack
+  ports:
+    - name: qbit
+      port: 8080
+      targetPort: 8080
+    - name: proxy-radarr
+      port: 4181
+      targetPort: 4181
+    - name: proxy-sonarr
+      port: 4182
+      targetPort: 4182
+    - name: proxy-prowlarr
+      port: 4183
+      targetPort: 4183
+    - name: proxy-bazarr
+      port: 4184
+      targetPort: 4184
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: radarr
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - radarr.download.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: download-stack
+          port: 4181
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: sonarr
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - sonarr.download.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: download-stack
+          port: 4182
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: prowlarr
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - prowlarr.download.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: download-stack
+          port: 4183
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: bazarr
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - bazarr.download.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: download-stack
+          port: 4184
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: torrent
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - torrent.download.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: download-stack
+          port: 8080
+---
