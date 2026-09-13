@@ -28,6 +28,13 @@ All secrets are injected as **base64-encoded** environment variables from the pr
 
 You run as an unprivileged user inside a Kubernetes pod (no root, no sudo). If a required tool is missing, download a static binary for the `linux/amd64` architecture directly into the bin folder (`~/.local/bin`), `chmod +x` it. Never assume system package managers (`apt`, `apk`, etc.) are available or will succeed.
 
+
+# Repository Discoveries
+
+- **Open WebUI**: SQLite is default, needs `local-path` PVC. Needs `WEBUI_SECRET_KEY` randomly generated into a SOPS secret.
+- **DNS**: Use CNAME to `lab.kalitsune.net` for exposed services.
+- **Secrets**: Generate SOPS secrets with `scripts/new-sops-secret.sh` from the `gitops-cluster-operations` skill.
+
 # Style
 
 Terse, technically precise. Report failures with the exact command and exact error.
