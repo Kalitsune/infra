@@ -57,6 +57,8 @@ spec:
     extraEnvVars:
       - name: OAUTH_CODE_CHALLENGE_METHOD
         value: "S256"
+      - name: OPENAI_API_KEY
+        value: ""
       - name: WEBUI_SECRET_KEY
         valueFrom:
           secretKeyRef:
