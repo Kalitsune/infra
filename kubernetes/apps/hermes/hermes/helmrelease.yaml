@@ -283,6 +283,17 @@ spec:
         readOnly: true
 
     extraEnv:
+      - name: API_SERVER_ENABLED
+        value: "true"
+      - name: API_SERVER_HOST
+        value: "0.0.0.0"
+      - name: API_SERVER_PORT
+        value: "8642"
+      - name: API_SERVER_KEY
+        valueFrom:
+          secretKeyRef:
+            name: hermes-a2a
+            key: token
       - name: HERMES_DASHBOARD
         value: "1"
       - name: HERMES_DASHBOARD_HOST
@@ -488,3 +499,6 @@ spec:
         - name: oauth2-proxy
           port: 4180
           targetPort: 4180
+        - name: api
+          port: 8642
+          targetPort: 8642

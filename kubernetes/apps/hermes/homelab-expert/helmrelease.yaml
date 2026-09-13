@@ -222,6 +222,17 @@ spec:
       OPENAI_API_KEY: ""
 
     extraEnv:
+      - name: API_SERVER_ENABLED
+        value: "true"
+      - name: API_SERVER_HOST
+        value: "0.0.0.0"
+      - name: API_SERVER_PORT
+        value: "8642"
+      - name: API_SERVER_KEY
+        valueFrom:
+          secretKeyRef:
+            name: homelab-expert-a2a
+            key: token
       # --- A2A inbound (this agent is the callable specialist) ---
       #
       # Direction is deliberate: hermes dispatches TO here. This release runs
@@ -506,6 +517,9 @@ spec:
         - name: a2a
           port: 9900
           targetPort: 9900
+        - name: api
+          port: 8642
+          targetPort: 8642
 
     extraContainers:
       - name: oauth2-proxy

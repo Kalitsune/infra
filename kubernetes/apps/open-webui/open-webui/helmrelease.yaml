@@ -35,6 +35,12 @@ spec:
       enabled: false
     pipelines:
       enabled: false
+    openaiBaseApiUrls:
+      - "http://hermes-hermes-agent.hermes.svc.cluster.local:8642/v1"
+      - "http://homelab-expert.hermes.svc.cluster.local:8642/v1"
+      - "http://9router.9router.svc.cluster.local:20128/v1"
+    openaiApiKeysExistingSecret: "open-webui-openai-keys"
+    openaiApiKeysExistingSecretKey: "keys"
     service:
       port: 80
       type: ClusterIP
