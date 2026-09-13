@@ -55,9 +55,22 @@ spec:
             - --banner=-
             - --skip-provider-button=true
             - --code-challenge-method=S256
-          envFrom:
-            - secretRef:
-                name: oauth2-proxy-secret-jellyseerr
+          env:
+            - name: OAUTH2_PROXY_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret-jellyseerr
+                  key: clientId
+            - name: OAUTH2_PROXY_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret-jellyseerr
+                  key: clientSecret
+            - name: OAUTH2_PROXY_COOKIE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret-jellyseerr
+                  key: cookieSecret
           ports:
             - containerPort: 4180
               name: proxy
