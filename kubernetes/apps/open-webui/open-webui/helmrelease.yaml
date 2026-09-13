@@ -38,6 +38,15 @@ spec:
     service:
       port: 80
       type: ClusterIP
+    sso:
+      enabled: true
+      oidc:
+        enabled: true
+        clientExistingSecret: "oauth2-proxy-secret"
+        clientIdExistingSecretKey: "clientId"
+        clientExistingSecretKey: "clientSecret"
+        providerUrl: "https://id.kalitsune.net"
+        providerName: "Pocket ID"
     extraEnvVars:
       - name: WEBUI_SECRET_KEY
         valueFrom:
