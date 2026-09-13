@@ -156,6 +156,7 @@ data:
 
   # ------------------------------------------------------------- federation
   CONTINUWUITY_ALLOW_FEDERATION: "true"
+  CONTINUWUITY_ALLOWED_REMOTE_SERVER_NAMES: '["thorondor.fr"]'
   CONTINUWUITY_ALLOW_ENCRYPTION: "true"
   # Notary servers used to fetch other homeservers' signing keys. matrix.org
   # is the conventional choice and makes the first join to a large room
