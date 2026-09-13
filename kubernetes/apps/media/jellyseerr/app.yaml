@@ -51,6 +51,12 @@ spec:
             - --banner=-
             - --skip-provider-button=true
             - --code-challenge-method=S256
+            # Jellyfin/Jellyseerr are open to both tiers. The groups scope must be
+            # requested explicitly or Pocket ID omits the claim entirely.
+            - --scope=openid email profile groups
+            - --oidc-groups-claim=groups
+            - --allowed-group=user
+            - --allowed-group=admin
           env:
             - name: OAUTH2_PROXY_CLIENT_ID
               valueFrom:
