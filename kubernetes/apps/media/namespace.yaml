@@ -2,3 +2,26 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: media
+  labels:
+    # The cluster's default Pod Security level is `baseline` (set by Talos in
+    # the apiserver's admission-control-config, not by a namespace label).
+    # baseline forbids non-default capabilities, so without this label the
+    # download-stack StatefulSet is admitted but every pod creation is
+    # rejected: FailedCreate "container gluetun must not include NET_ADMIN".
+    #
+    # gluetun needs NET_ADMIN to create the WireGuard interface and install
+    # the killswitch routes that keep qBittorrent/*arr traffic inside the VPN.
+    # There is no way to build a tunnel without it.
+    #
+    # `privileged` is what permits added capabilities; baseline is precisely
+    # what rejects them. Same pattern as the matrix namespace (coturn).
+    #
+    # The namespace level is not the security boundary; the workload is. Only
+    # the gluetun container adds a capability — every other container in the
+    # namespace runs with defaults.
+    pod-security.kubernetes.io/enforce: privileged
+    pod-security.kubernetes.io/enforce-version: latest
+    # Keep the strict profile visible as a warning, so anything added here
+    # later is still told when it could have been `restricted`.
+    pod-security.kubernetes.io/warn: restricted
+    pod-security.kubernetes.io/warn-version: latest
