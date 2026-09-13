@@ -81,6 +81,8 @@ spec:
       labels:
         app: download-stack
     spec:
+      # Grants the tailscale sidecar access to its own state Secret only.
+      serviceAccountName: tailscale
       containers:
         - name: qbittorrent
           image: lscr.io/linuxserver/qbittorrent:latest
@@ -171,38 +173,57 @@ spec:
               value: Europe/Paris
             - name: LOG_LEVEL
               value: info
-        - name: gluetun
-          image: qmcgaw/gluetun:latest
+        # Plain Tailscale sidecar -- deliberately NOT the Tailscale Kubernetes
+        # operator. Same role gluetun had: it owns the pod's egress path, and
+        # every other container in this pod shares its network namespace.
+        #
+        # gluetun was removed because it cannot work here. The Mullvad add-on
+        # is sold through Tailscale, and Tailscale generates and manages the
+        # Mullvad account itself -- it never hands out a raw WireGuard private
+        # key. The key we had was a leftover from the old standalone Mullvad
+        # account and is no longer registered, which is why the handshake to
+        # 193.32.127.84:51820 and .68:51820 was answered with silence
+        # (tun0: TX 296 bytes, RX 0). Mullvad exit nodes are only reachable
+        # through the tailnet, so the tailnet is how we reach them.
+        - name: tailscale
+          image: ghcr.io/tailscale/tailscale:v1.78.1
           securityContext:
             capabilities:
               add:
-                # Required to create the tun0 WireGuard interface and install
-                # the killswitch routes. This is why the media namespace runs
-                # with the `privileged` Pod Security level.
+                # Needed to create the tailscale0 interface and install routes,
+                # exactly as gluetun needed it for tun0. This is why the media
+                # namespace runs with the `privileged` Pod Security level.
                 - NET_ADMIN
           env:
-            - name: VPN_SERVICE_PROVIDER
-              value: mullvad
-            - name: VPN_TYPE
-              value: wireguard
-            - name: SERVER_CITIES
-              value: Zurich
-            - name: OWNED_ONLY
-              value: "yes"
-            - name: WIREGUARD_PRIVATE_KEY
+            - name: TS_AUTHKEY
               valueFrom:
                 secretKeyRef:
-                  name: wg-secret
-                  key: WG_KEY
-            - name: WIREGUARD_ADDRESSES
-              value: 10.72.212.153/32
-            # Without this the killswitch drops cluster traffic, so kube-proxy
-            # could not reach the app ports below and every Service backed by
-            # this pod would time out. These are the pod CIDR, the service
-            # CIDR and the home LAN -- local destinations that must bypass the
-            # tunnel. Public traffic is unaffected and still VPN-only.
-            - name: FIREWALL_OUTBOUND_SUBNETS
-              value: 10.244.0.0/16,10.96.0.0/12,192.168.1.0/24
+                  name: tailscale-auth
+                  key: TS_AUTHKEY
+            - name: TS_KUBE_SECRET
+              value: tailscale-state-download-stack
+            # Must come BEFORE TS_EXTRA_ARGS: Kubernetes only expands $(VAR)
+            # against variables declared earlier in the list. Declared after,
+            # it would be passed through as the literal string
+            # "--exit-node=$(TS_EXIT_NODE)" and tailscale would reject it.
+            - name: TS_EXIT_NODE
+              valueFrom:
+                configMapKeyRef:
+                  name: tailscale-exit-node
+                  key: exitNode
+            # --exit-node is set here rather than by a later `tailscale up`,
+            # so the exit node is in force from the first packet. There is no
+            # window where torrent traffic could leave on the bare uplink.
+            #
+            # --exit-node-allow-lan-access keeps the cluster reachable: without
+            # it the exit node swallows traffic to the pod and service CIDRs,
+            # kube-proxy could not reach the app ports, and every Service
+            # backed by this pod would time out. This is the direct equivalent
+            # of gluetun's FIREWALL_OUTBOUND_SUBNETS.
+            - name: TS_EXTRA_ARGS
+              value: --exit-node=$(TS_EXIT_NODE) --exit-node-allow-lan-access --hostname=download-stack
+            - name: TS_USERSPACE
+              value: "false"
       volumes:
         - name: media-storage
           persistentVolumeClaim:

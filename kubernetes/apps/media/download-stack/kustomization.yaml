@@ -3,4 +3,5 @@ kind: Kustomization
 resources:
   - app.yaml
   - oauth2-secret.yaml
-  - wg-secret.yaml
+  - tailscale-rbac.yaml
+  - tailscale-auth-secret.yaml

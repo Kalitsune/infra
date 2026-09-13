@@ -1,0 +1,59 @@
+# RBAC for the plain Tailscale sidecar -- NOT the Tailscale Kubernetes
+# operator. The sidecar persists its node state (node key, machine identity)
+# in a Kubernetes Secret via TS_KUBE_SECRET, so it needs permission to read
+# and write that one Secret. Without this it re-authenticates on every restart,
+# burning a fresh tailnet device each time and leaving stale nodes behind.
+#
+# Scoped deliberately narrowly: one namespace, and resourceNames pinned to the
+# single state Secret. It cannot read the OIDC client secrets or the WireGuard
+# secret that live in this same namespace.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: tailscale
+  namespace: media
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: tailscale
+  namespace: media
+rules:
+  # `create` cannot be restricted by resourceName -- the name is not known
+  # until the request is admitted -- so it is granted separately and the
+  # read/write verbs stay pinned to the state Secret.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["tailscale-state-download-stack"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: tailscale
+  namespace: media
+subjects:
+  - kind: ServiceAccount
+    name: tailscale
+    namespace: media
+roleRef:
+  kind: Role
+  name: tailscale
+  apiGroup: rbac.authorization.k8s.io
+---
+# Which Mullvad exit node the download stack leaves through.
+#
+# Kept in a ConfigMap rather than hardcoded in the StatefulSet so changing
+# country is a one-line edit plus a pod restart, with no risk of disturbing
+# the container spec. Mullvad exit nodes are addressed by their MagicDNS name;
+# the old compose stack used Zurich, so this keeps the same exit country.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: tailscale-exit-node
+  namespace: media
+data:
+  exitNode: ch-zrh-wg-001.mullvad.ts.net
