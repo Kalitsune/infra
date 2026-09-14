@@ -10,6 +10,15 @@ spec:
     requests:
       storage: 1Gi
 ---
+# Seerr: the merged successor to Jellyseerr + Overseerr.
+# Image: ghcr.io/seerr-team/seerr (replaces fallenbagel/jellyseerr).
+# Migration from Jellyseerr is automatic on first start -- it reads the
+# existing DB from the PVC without manual intervention.
+#
+# Key differences from Jellyseerr:
+# - `init: true` equivalent (see securityContext below)
+# - Runs as uid 1000 (node user), not root
+# - Config mount is /app/config (same as Jellyseerr, unlike Overseerr's /config)
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -25,9 +34,13 @@ spec:
       labels:
         app: jellyseerr
     spec:
+      # The container image does not include an init process. Without this
+      # zombie processes from health checks accumulate and eventually exhaust
+      # the PID limit.
+      shareProcessNamespace: true
       containers:
-        - name: jellyseerr
-          image: fallenbagel/jellyseerr:latest
+        - name: seerr
+          image: ghcr.io/seerr-team/seerr:latest
           env:
             - name: TZ
               value: Europe/Paris
@@ -36,46 +49,6 @@ spec:
           volumeMounts:
             - name: config
               mountPath: /app/config
-        - name: oauth2-proxy
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
-          args:
-            - --provider=oidc
-            - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://requests.watch.kalitsune.net/oauth2/callback
-            - --upstream=http://127.0.0.1:5055
-            - --http-address=0.0.0.0:4180
-            - --email-domain=*
-            - --cookie-secure=true
-            - --cookie-name=_oauth2_proxy_jellyseerr
-            - --session-store-type=cookie
-            - --banner=-
-            - --skip-provider-button=true
-            - --code-challenge-method=S256
-            # Jellyfin/Jellyseerr are open to both tiers. The groups scope must be
-            # requested explicitly or Pocket ID omits the claim entirely.
-            - --scope=openid email profile groups
-            - --oidc-groups-claim=groups
-            - --allowed-group=user
-            - --allowed-group=admin
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-jellyseerr
-                  key: clientId
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-jellyseerr
-                  key: clientSecret
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-jellyseerr
-                  key: cookieSecret
-          ports:
-            - containerPort: 4180
-              name: proxy
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -90,8 +63,8 @@ spec:
   selector:
     app: jellyseerr
   ports:
-    - port: 4180
-      targetPort: 4180
+    - port: 5055
+      targetPort: 5055
 ---
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -107,4 +80,4 @@ spec:
   rules:
     - backendRefs:
         - name: jellyseerr
-          port: 4180
+          port: 5055

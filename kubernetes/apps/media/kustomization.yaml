@@ -4,7 +4,6 @@ namespace: media
 resources:
   - namespace.yaml
   - media-pvc.yaml
-  - oauth2-media-secret.yaml
   - jellyfin
   - jellyseerr
   - download-stack
