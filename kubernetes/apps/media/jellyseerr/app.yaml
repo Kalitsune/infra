@@ -38,6 +38,16 @@ spec:
       # zombie processes from health checks accumulate and eventually exhaust
       # the PID limit.
       shareProcessNamespace: true
+      # Seerr runs as uid 1000 (node), but the PVC was created by Jellyseerr
+      # which ran as root. An init container fixes ownership once; after that
+      # Seerr itself maintains the files.
+      initContainers:
+        - name: fix-perms
+          image: busybox:latest
+          command: ["sh", "-c", "chown -R 1000:1000 /app/config"]
+          volumeMounts:
+            - name: config
+              mountPath: /app/config
       containers:
         - name: seerr
           image: ghcr.io/seerr-team/seerr:latest
