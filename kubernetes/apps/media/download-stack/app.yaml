@@ -350,7 +350,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://radarr.download.kalitsune.net/oauth2/callback
+            - --redirect-url=https://radarr.lab.kalitsune.net/oauth2/callback
             - --upstream=http://download-stack.media.svc.cluster.local:7878
             - --http-address=0.0.0.0:4181
             - --email-domain=*
@@ -390,7 +390,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://sonarr.download.kalitsune.net/oauth2/callback
+            - --redirect-url=https://sonarr.lab.kalitsune.net/oauth2/callback
             - --upstream=http://download-stack.media.svc.cluster.local:8989
             - --http-address=0.0.0.0:4182
             - --email-domain=*
@@ -426,7 +426,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://prowlarr.download.kalitsune.net/oauth2/callback
+            - --redirect-url=https://prowlarr.lab.kalitsune.net/oauth2/callback
             - --upstream=http://download-stack.media.svc.cluster.local:9696
             - --http-address=0.0.0.0:4183
             - --email-domain=*
@@ -462,7 +462,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://bazarr.download.kalitsune.net/oauth2/callback
+            - --redirect-url=https://bazarr.lab.kalitsune.net/oauth2/callback
             - --upstream=http://download-stack.media.svc.cluster.local:6767
             - --http-address=0.0.0.0:4184
             - --email-domain=*
@@ -498,7 +498,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://torrent.download.kalitsune.net/oauth2/callback
+            - --redirect-url=https://torrent.lab.kalitsune.net/oauth2/callback
             - --upstream=http://download-stack.media.svc.cluster.local:8080
             - --http-address=0.0.0.0:4185
             - --email-domain=*
@@ -565,7 +565,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - radarr.download.kalitsune.net
+    - radarr.lab.kalitsune.net
   rules:
     - backendRefs:
         - name: media-auth-proxy
@@ -581,7 +581,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - sonarr.download.kalitsune.net
+    - sonarr.lab.kalitsune.net
   rules:
     - backendRefs:
         - name: media-auth-proxy
@@ -597,7 +597,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - prowlarr.download.kalitsune.net
+    - prowlarr.lab.kalitsune.net
   rules:
     - backendRefs:
         - name: media-auth-proxy
@@ -613,7 +613,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - bazarr.download.kalitsune.net
+    - bazarr.lab.kalitsune.net
   rules:
     - backendRefs:
         - name: media-auth-proxy
@@ -629,7 +629,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - torrent.download.kalitsune.net
+    - torrent.lab.kalitsune.net
   rules:
     - backendRefs:
         - name: media-auth-proxy

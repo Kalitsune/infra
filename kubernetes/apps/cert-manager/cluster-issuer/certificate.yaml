@@ -7,13 +7,12 @@ spec:
   secretName: apps-tls
   dnsNames:
     # A wildcard matches exactly one label, so "*.kalitsune.net" does NOT
-    # cover "radarr.download.kalitsune.net". Each subdomain level in use needs
+    # cover "radarr.lab.kalitsune.net". Each subdomain level in use needs
     # its own wildcard entry or TLS fails with curl exit 60 (cert verify).
     - "*.kalitsune.net"
+    # radarr/sonarr/prowlarr/bazarr/torrent .lab.kalitsune.net
     - "*.lab.kalitsune.net"
     - "*.hermes.kalitsune.net"
-    # radarr/sonarr/prowlarr/bazarr/torrent .download.kalitsune.net
-    - "*.download.kalitsune.net"
     # requests.watch.kalitsune.net (jellyseerr)
     - "*.watch.kalitsune.net"
   issuerRef:
