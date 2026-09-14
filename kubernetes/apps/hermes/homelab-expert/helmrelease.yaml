@@ -479,6 +479,7 @@ spec:
               key="${f##*/}"
               printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
             done
+            chown 10000:10000 "$env_file"
             chmod 600 "$env_file"
             echo "seeded infra credentials into $env_file ($(echo "$managed" | tr '|' ' '))"
 
@@ -500,6 +501,7 @@ spec:
               "saveMessages": true
             }
             EOF
+            chown 10000:10000 /opt/data/honcho.json
             chmod 600 /opt/data/honcho.json
             echo "seeded honcho.json"
         volumeMounts:

@@ -219,6 +219,7 @@ spec:
               "saveMessages": true
             }
             EOF
+            chown 10000:10000 /opt/data/honcho.json
             chmod 600 /opt/data/honcho.json
             echo "seeded honcho.json"
 
