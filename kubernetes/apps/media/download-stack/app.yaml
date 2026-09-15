@@ -245,6 +245,10 @@ spec:
                   - /bin/sh
                   - -c
                   - |
+                    # Bypass Tailscale routing table for cluster IPs so inbound traffic
+                    # (like oauth2-proxy) can receive responses instead of getting dropped.
+                    ip rule add to 10.0.0.0/8 priority 5200 lookup main 2>/dev/null || true
+                    
                     # Pin egress to the Mullvad exit node once login has
                     # populated the netmap (it is empty at boot, which is why
                     # this is not passed to `tailscale up`).
