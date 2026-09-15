@@ -58,6 +58,12 @@ spec:
         runAsNonRoot: true
         runAsUser: 10000
         runAsGroup: 10000
+        # Secret and ConfigMap volumes are mounted root:root, so uid 10000
+        # could not read registration.yml (EACCES, crashloop). fsGroup makes
+        # the kubelet chgrp the volume to this gid and OR the read bit into
+        # the group -- 0400 below lands as 0440 root:10000. Same pattern as
+        # ../coturn.
+        fsGroup: 10000
         seccompProfile:
           type: RuntimeDefault
       containers:
