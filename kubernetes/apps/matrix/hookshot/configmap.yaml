@@ -1,0 +1,101 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hookshot-config
+  namespace: matrix
+data:
+  # Hookshot's whole config, minus credentials. The appservice tokens and the
+  # token-encryption passkey live in secret.yaml and are mounted separately at
+  # /secrets — they are NOT merged into this file, because hookshot reads the
+  # registration as its own second CLI argument and the passkey by path.
+  #
+  # Reference: https://matrix-org.github.io/matrix-hookshot/latest/setup.html
+  # Validated against 7.4.4 with `node /bin/matrix-hookshot/config/Config.js`.
+  config.yml: |
+    bridge:
+      # server_name, NOT the host clients reach. Continuwuity's server_name is
+      # the apex (see ../continuwuity/README.md), so user IDs minted here read
+      # @webhook:kalitsune.net.
+      domain: kalitsune.net
+
+      # Where hookshot calls the client-server API. In-cluster Service: this
+      # traffic never needs to leave the cluster, and routing it through the
+      # public hostname would pointlessly hairpin through Envoy and the WAN.
+      url: http://continuwuity.matrix.svc.cluster.local:8008
+
+      # Media URL must be PUBLIC: it is handed to remote services and embedded
+      # in events, not fetched by hookshot itself.
+      mediaUrl: https://matrix.kalitsune.net
+
+      # The appservice listener — the homeserver PUSHES transactions here.
+      # Must match `url:` in the registration inside secret.yaml
+      # (http://hookshot.matrix.svc.cluster.local:9993). Deliberately not
+      # exposed through the Gateway: see httproute.yaml.
+      port: 9993
+      # Default is 127.0.0.1, which in a container means nothing can reach it.
+      bindAddress: 0.0.0.0
+
+    # RSA-4096 key encrypting any user tokens hookshot stores. Read once at
+    # startup (UserTokenStore.fromKeyPath), never written, hence a read-only
+    # Secret mount rather than a volume.
+    passFile: /secrets/passkey.pem
+
+    listeners:
+      # Inbound webhook traffic. Separate from the appservice port above so
+      # the Gateway can expose this one and only this one.
+      - port: 9000
+        bindAddress: 0.0.0.0
+        resources:
+          - webhooks
+
+    generic:
+      enabled: true
+
+      # The public base URL hookshot prints when you run `!hookshot webhook
+      # <name>`. It must match what the HTTPRoute actually serves, including
+      # the /webhook path segment — hookshot mounts its router at /webhook and
+      # the route does not rewrite the path. A mismatch here is silent: the
+      # bot hands out a URL that 404s.
+      urlPrefix: https://webhooks.lab.kalitsune.net/webhook/
+
+      # Each named hook posts as its own ghost user (@_webhook_<name>:...)
+      # instead of everything arriving from the one bot account. The matching
+      # regex is reserved (exclusive) in the registration; changing this
+      # prefix means changing that too, or the users cannot be created.
+      userIdPrefix: _webhook_
+
+      # Off. This lets a room moderator supply JavaScript that hookshot runs
+      # (sandboxed in QuickJS) on every payload. Useful, but it is remote code
+      # execution as a configuration option — turn it on deliberately, not by
+      # default.
+      allowJsTransformationFunctions: false
+
+      # Respond 200 as soon as the payload is queued rather than after the
+      # Matrix event lands. Senders that time out aggressively (Slack-style)
+      # prefer this; flip it per-hook if a caller needs delivery confirmation.
+      waitForComplete: false
+
+      # Off, and it matters: with GET enabled, any client or server that
+      # generates a URL PREVIEW of the webhook link fires the webhook. The
+      # link is a bearer credential, so it WILL get pasted into a room.
+      enableHttpGet: false
+
+      # No outbound (Matrix -> HTTP) direction for now. It would forward every
+      # event in a connected room, including media, to a third-party URL.
+      outbound: false
+
+    permissions:
+      # Explicit, because the default when this key is ABSENT is "every user
+      # on kalitsune.net is an admin of the bridge". The homeserver has open
+      # OIDC registration against Pocket ID, so that default is not acceptable
+      # here.
+      - actor: "@maple:kalitsune.net"
+        services:
+          - service: "*"
+            level: admin
+
+    logging:
+      level: info
+      # Structured-ish plain text; colour codes only make `kubectl logs` noisy.
+      colorize: false
+      json: false

@@ -1,0 +1,141 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hookshot
+  namespace: matrix
+spec:
+  selector:
+    app.kubernetes.io/name: hookshot
+  ports:
+    # The homeserver pushes appservice transactions here. Cluster-internal
+    # only — this port has no authentication beyond the hs_token and must
+    # never be reachable from the internet.
+    - name: appservice
+      port: 9993
+      targetPort: appservice
+    # Inbound webhooks. This is the one the Gateway routes to.
+    - name: webhooks
+      port: 9000
+      targetPort: webhooks
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: hookshot
+  namespace: matrix
+spec:
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate. Hookshot holds appservice state in memory
+    # (no Redis cache configured), and two instances both receiving pushed
+    # transactions would double-post webhook messages into rooms during the
+    # surge window. Cost is a few seconds of downtime per rollout.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: hookshot
+  template:
+    metadata:
+      annotations:
+        # Bump whenever configmap.yaml or secret.yaml changes.
+        #
+        # config.yml arrives as a MOUNTED FILE, which does update in place —
+        # but hookshot reads it once at startup, so the running process keeps
+        # the old values and the deploy looks applied when it is not. This
+        # annotation is part of the pod template, so bumping it is what
+        # actually applies a config edit.
+        kalitsune.net/config-generation: "1"
+      labels:
+        app.kubernetes.io/name: hookshot
+    spec:
+      # Nothing here reads a Service link, and `WEBHOOK_*`-shaped injected
+      # vars would be pure noise. Matches the convention in ../continuwuity.
+      enableServiceLinks: false
+      securityContext:
+        # The image ships no USER and would run as root. It does not need to:
+        # verified by running 7.4.4 as uid 10000 with a read-only root
+        # filesystem — config validated, listener bound, /ready answered.
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: hookshot
+          # 7.4.4, current stable. Includes the fix for GHSA-5c49-6fvm-2xvc
+          # (webhook URLs leaking into Prometheus metrics) — do not pin older.
+          # index digest sha256:4110ffaf4b11433c72e7a168078dac5d1f86bd58593e2412c61156742741a23d
+          image: ghcr.io/matrix-org/matrix-hookshot:7.4.4
+          # The image's CMD points at /data/config.yml and
+          # /data/registration.yml. Both are mounted read-only from a
+          # ConfigMap and a Secret at different paths, so the paths are given
+          # explicitly instead of staging copies into a writable /data.
+          command:
+            - node
+            - /bin/matrix-hookshot/App/BridgeApp.js
+            - /config/config.yml
+            - /secrets/registration.yml
+          ports:
+            - name: appservice
+              containerPort: 9993
+            - name: webhooks
+              containerPort: 9000
+          # Every hookshot listener serves /live and /ready. /ready only
+          # returns 200 once the webhook resources are BOUND, which happens at
+          # the very end of Bridge.start() — after it has reached the
+          # homeserver. So this probe proves the bridge is actually wired to
+          # Matrix, not merely that node is running.
+          startupProbe:
+            httpGet:
+              path: /ready
+              port: webhooks
+            periodSeconds: 5
+            # Generous: Bridge.start() blocks in a retry loop until the
+            # homeserver answers getWhoAmI(), which on a cold start can mean
+            # waiting for continuwuity's own rollout.
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: webhooks
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: webhooks
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            # Nothing is written to disk: no Redis cache means storage is
+            # in-memory, and encryption (the only feature needing a writable
+            # crypto store) is off — it would require Redis anyway.
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            name: hookshot-config
+        - name: secrets
+          secret:
+            secretName: hookshot-secrets
+            # 0400: read-only to the runAsUser above, invisible to anyone
+            # else. These are the appservice tokens and the passkey.
+            defaultMode: 0400
