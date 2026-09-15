@@ -25,15 +25,27 @@ spec:
       labels:
         app: jellyfin
     spec:
-      # Seeds the File Transformation plugin's config onto the PVC before the
-      # server starts. The plugin reads this file in its constructor and
-      # registers the transformation from it, so it has to be in place before
-      # Jellyfin loads plugins -- an init container, not a Job.
+      # Seeds the File Transformation plugin's config onto the PVC, and copies
+      # Abyss' web assets into an emptyDir, before the server starts. The
+      # plugin reads its config in its own constructor and registers the
+      # transformation from it, so it has to be in place before Jellyfin loads
+      # plugins -- an init container, not a Job.
       #
-      # Overwriting on every boot is the point: this file is git-owned, so an
+      # Overwriting on every boot is the point: the config is git-owned, so an
       # edit made in the plugin's dashboard page lasts until the next restart
       # and then reverts. The plugins/configurations directory already exists
       # on the PVC; mkdir -p keeps a rebuilt volume working.
+      #
+      # The assets are copied rather than mounted because a ConfigMap volume
+      # presents every key as a symlink into ..data/, and .NET returns the
+      # *link path* length from FileInfo.Length for a symlink. Kestrel sets
+      # Content-Length from that, so mounting the ConfigMap straight onto the
+      # web root served abyss.css as exactly 16 bytes -- strlen of
+      # "..data/abyss.css" -- with a 200 and the right content type. `cp -L`
+      # dereferences into plain files and the sizes come back correct. The
+      # glob (not `/.`) is deliberate: busybox `cp` refuses a directory
+      # argument, and `*` also skips the mount's own dot-prefixed ..data
+      # symlink.
       initContainers:
         - name: abyss-theme
           image: busybox:latest
@@ -45,11 +57,16 @@ spec:
               mkdir -p /config/plugins/configurations
               cp /abyss-config/Jellyfin.Plugin.FileTransformation.xml \
                  /config/plugins/configurations/Jellyfin.Plugin.FileTransformation.xml
+              cp -L /abyss-web-src/* /abyss-web/
           volumeMounts:
             - name: config
               mountPath: /config
             - name: abyss-config
               mountPath: /abyss-config
+            - name: abyss-web-src
+              mountPath: /abyss-web-src
+            - name: abyss-web
+              mountPath: /abyss-web
       containers:
         - name: jellyfin
           image: jellyfin/jellyfin:latest
@@ -96,9 +113,15 @@ spec:
         # a content hash: editing any Abyss file renames the ConfigMap, which
         # changes the pod template and rolls the Deployment. No checksum
         # annotation is needed.
-        - name: abyss-web
+        #
+        # abyss-web-src is the ConfigMap; abyss-web is the dereferenced copy
+        # the init container writes and Jellyfin actually serves. See the
+        # symlink/Content-Length note above.
+        - name: abyss-web-src
           configMap:
             name: jellyfin-abyss-web
+        - name: abyss-web
+          emptyDir: {}
         - name: abyss-config
           configMap:
             name: jellyfin-abyss-config

@@ -19,11 +19,41 @@ Here the same result is assembled declaratively:
 
 | Upstream installer step | What this repo does instead |
 | --- | --- |
-| copy `spotlight.*` into `<web>/ui/` | `jellyfin-abyss-web` ConfigMap mounted at `/jellyfin/jellyfin-web/ui` |
+| copy `spotlight.*` into `<web>/ui/` | `jellyfin-abyss-web` ConfigMap, copied by an init container into an emptyDir mounted at `/jellyfin/jellyfin-web/ui` |
 | patch `<script>` into `index.html` | [File Transformation](https://github.com/IAmParadox27/jellyfin-plugin-file-transformation) rewrites the response |
 | `@import` jsDelivr into Custom CSS | the same transformation injects `<link href="ui/abyss.css">` |
 
 Nothing on disk is modified, so an image bump cannot undo it.
+
+### Two traps, both of which fail silently
+
+Worth knowing before changing any of this, because neither produces an error
+at any layer you would normally check — Flux `Ready`, pod `Ready`, init exit 0:
+
+**`--` is illegal inside an XML comment.** Jellyfin's `BasePlugin`
+deserialises plugin config in its constructor and, on a parse failure, writes
+*defaults* back over the file. A comment containing `--` therefore replaced
+the seeded transformation with `<Transformations />` at plugin load, and the
+init container's own copy was long gone by the time anything could inspect it.
+The tell is the config file's mtime matching the "Loaded plugin" log line.
+Validate before committing:
+
+```bash
+python3 -c "import xml.etree.ElementTree as E; E.parse('abyss/Jellyfin.Plugin.FileTransformation.xml')"
+```
+
+**A ConfigMap cannot be mounted straight onto the web root.** Every key in a
+ConfigMap volume is a symlink into `..data/`, and .NET's `FileInfo.Length`
+returns the length of the *link path* for a symlink. Kestrel sets
+`Content-Length` from that, so `abyss.css` came back `200 text/css` with
+exactly 16 bytes — `strlen("..data/abyss.css")` — and the browser saw a
+truncated stylesheet rather than an error. The init container `cp -L`s into an
+emptyDir to dereference. Check with the size, not the status code:
+
+```bash
+kubectl -n media exec deploy/jellyfin -c jellyfin -- \
+  curl -sS -o /dev/null -w '%{http_code} %{size_download}\n' http://127.0.0.1:8096/web/ui/abyss.css
+```
 
 ### How the injection works
 
