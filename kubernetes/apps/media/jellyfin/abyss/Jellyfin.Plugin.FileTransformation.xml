@@ -9,7 +9,7 @@
   `</body>` of jellyfin-web's index.html. Both assets are served from
   /web/ui/, which is the `jellyfin-abyss-web` ConfigMap mounted into the
   image's web root, so the theme is pinned in git rather than pulled from
-  jsDelivr. (abyss.css does still @import Google Fonts and an icon woff2 --
+  jsDelivr. (abyss.css does still @import Google Fonts and an icon woff2;
   see the note in ../app.yaml.)
 
   Injecting a <link> rather than using Dashboard > Branding > Custom CSS is
