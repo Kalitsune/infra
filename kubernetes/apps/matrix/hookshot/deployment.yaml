@@ -118,9 +118,8 @@ spec:
             capabilities:
               drop:
                 - ALL
-            # Nothing is written to disk: no Redis cache means storage is
-            # in-memory, and encryption (the only feature needing a writable
-            # crypto store) is off — it would require Redis anyway.
+            # Root FS is read-only. Writable state (encryption crypto store)
+            # is mounted at /data.
             readOnlyRootFilesystem: true
           resources:
             requests:
@@ -129,6 +128,8 @@ spec:
             limits:
               memory: 512Mi
           volumeMounts:
+            - name: data
+              mountPath: /data
             - name: config
               mountPath: /config
               readOnly: true
@@ -136,6 +137,9 @@ spec:
               mountPath: /secrets
               readOnly: true
       volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: hookshot-data
         - name: config
           configMap:
             name: hookshot-config

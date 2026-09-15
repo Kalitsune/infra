@@ -7,6 +7,8 @@ resources:
   # #admins room, see README.md — so rotating this Secret is a two-sided
   # operation, not a git-only one.
   - secret.yaml
+  - pvc.yaml
+  - redis.yaml
   - deployment.yaml
   - httproute.yaml
 

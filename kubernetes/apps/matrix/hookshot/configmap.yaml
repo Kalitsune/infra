@@ -40,6 +40,12 @@ data:
     # Secret mount rather than a volume.
     passFile: /secrets/passkey.pem
 
+    cache:
+      redisUri: redis://hookshot-redis:6379
+
+    encryption:
+      storagePath: /data/cryptostore
+
     listeners:
       # Inbound webhook traffic. Separate from the appservice port above so
       # the Gateway can expose this one and only this one.

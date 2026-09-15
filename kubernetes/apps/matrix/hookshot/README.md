@@ -111,16 +111,12 @@ access. The route exposes exactly one path prefix (`/webhook/`), so the
 hostname serves nothing but hook deliveries; the `/live` and `/ready`
 endpoints on the same listener stay unroutable.
 
-### No storage, no PVC
+### Storage and Redis for E2EE
 
-No `cache.redisUri`, so hookshot uses in-memory storage; connections live in
-Matrix **room state**, not on disk, and survive restarts because the homeserver
-holds them. The root filesystem is read-only as a result.
-
-This is also why encryption is off: `encryption.storagePath` requires the Redis
-cache (`BridgeConfigEncryption` throws otherwise). Hookshot cannot post to
-encrypted rooms without it — if a webhook room needs E2EE, that means adding
-Redis and a crypto-store volume, not just flipping a flag.
+Hookshot requires a Redis cache and persistent storage (`/data/cryptostore`)
+to support End-to-End Encryption (E2EE). The config uses an ephemeral Redis
+pod for caching, and a PVC for the encryption keys. The root filesystem
+remains read-only.
 
 ### One replica, `Recreate`
 
