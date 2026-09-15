@@ -83,6 +83,55 @@ spec:
     spec:
       # Grants the tailscale sidecar access to its own state Secret only.
       serviceAccountName: tailscale
+      initContainers:
+        # qBittorrent has no declarative config surface: it reads
+        # /config/qBittorrent/qBittorrent.conf off the PVC at boot and rewrites
+        # the whole file on exit, so anything written here by hand is transient.
+        # Authentication is already done by oauth2-proxy in front of it, while
+        # qBittorrent's own login uses a password regenerated on every restart
+        # and printed only to the container log -- i.e. nobody can log in, and
+        # the WebUI answers 403. Disable that second login for callers that can
+        # only be the proxy (pod network) or a sibling container in this pod
+        # (localhost -- radarr/sonarr use qBittorrent as their download client).
+        #
+        # Reruns on every pod start, patching only these three keys and leaving
+        # every other setting under qBittorrent's control. Same image as the app
+        # container, so no extra pull.
+        - name: qbt-auth-config
+          image: lscr.io/linuxserver/qbittorrent:latest
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -eu
+              conf=/config/qBittorrent/qBittorrent.conf
+              tmp=$(mktemp)
+              mkdir -p "$(dirname "$conf")"
+              touch "$conf"
+              grep -vF -e 'WebUI\AuthSubnetWhitelist=' \
+                       -e 'WebUI\AuthSubnetWhitelistEnabled=' \
+                       -e 'WebUI\LocalHostAuth=' "$conf" > "$tmp" || true
+              grep -qF '[Preferences]' "$tmp" || printf '\n[Preferences]\n' >> "$tmp"
+              awk '
+                /^\[Preferences\]/ && !seen {
+                  print
+                  print "WebUI\\AuthSubnetWhitelist=10.244.0.0/16"
+                  print "WebUI\\AuthSubnetWhitelistEnabled=true"
+                  print "WebUI\\LocalHostAuth=false"
+                  seen = 1
+                  next
+                }
+                { print }
+              ' "$tmp" > "$conf"
+              rm -f "$tmp"
+              echo "--- patched $conf ---"
+              cat "$conf"
+          volumeMounts:
+            - name: qbittorrent-config
+              mountPath: /config
       containers:
         - name: qbittorrent
           image: lscr.io/linuxserver/qbittorrent:latest
