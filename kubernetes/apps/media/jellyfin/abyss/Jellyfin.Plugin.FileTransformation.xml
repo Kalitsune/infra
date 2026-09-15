@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  File Transformation plugin config, seeded onto the PVC by the `abyss-theme`
+  init container in ../app.yaml. This file is git-owned: the plugin's dashboard
+  page writes to the same path, so an edit made there survives only until the
+  next pod restart. Change the theme here, not in the UI.
+
+  The single transformation appends Abyss' stylesheet and Spotlight loader to
+  `</body>` of jellyfin-web's index.html. Both assets are served from
+  /web/ui/, which is the `jellyfin-abyss-web` ConfigMap mounted into the
+  image's web root, so the theme is pinned in git rather than pulled from
+  jsDelivr. (abyss.css does still @import Google Fonts and an icon woff2 --
+  see the note in ../app.yaml.)
+
+  Injecting a <link> rather than using Dashboard > Branding > Custom CSS is
+  deliberate: branding.xml on the same PVC also holds <LoginDisclaimer>, which
+  the SSO plugin rewrites itself. Seeding that file would fight the plugin for
+  ownership and drop the Pocket ID login button.
+
+  Appending at `</body>` (not `</head>`) puts the sheet after jellyfin-web's
+  own stylesheets in document order, so Abyss wins cascade ties without
+  needing extra !important rules.
+
+  The search/replace runs against the file on disk on every request, never
+  against its own output, so it cannot double-inject.
+
+  Moonfin registers its own index.html transformation at startup. Both live in
+  the same pipeline and both run; Moonfin injects at `</head>`, so they do not
+  overlap.
+-->
+<PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
+  <DebugLoggingState>Disabled</DebugLoggingState>
+  <Transformations>
+    <PluginDefinedTransformation>
+      <Id>ab455000-0001-4000-8000-000000000001</Id>
+      <FilenamePattern>index.html</FilenamePattern>
+      <SearchText>&lt;/body&gt;</SearchText>
+      <ReplaceText>&lt;link rel="stylesheet" href="ui/abyss.css" data-abyss-theme&gt;&lt;script src="ui/spotlight-loader.js" data-abyss-spotlight&gt;&lt;/script&gt;&lt;/body&gt;</ReplaceText>
+    </PluginDefinedTransformation>
+  </Transformations>
+</PluginConfiguration>

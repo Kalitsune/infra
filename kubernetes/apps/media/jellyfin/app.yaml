@@ -25,6 +25,31 @@ spec:
       labels:
         app: jellyfin
     spec:
+      # Seeds the File Transformation plugin's config onto the PVC before the
+      # server starts. The plugin reads this file in its constructor and
+      # registers the transformation from it, so it has to be in place before
+      # Jellyfin loads plugins -- an init container, not a Job.
+      #
+      # Overwriting on every boot is the point: this file is git-owned, so an
+      # edit made in the plugin's dashboard page lasts until the next restart
+      # and then reverts. The plugins/configurations directory already exists
+      # on the PVC; mkdir -p keeps a rebuilt volume working.
+      initContainers:
+        - name: abyss-theme
+          image: busybox:latest
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              mkdir -p /config/plugins/configurations
+              cp /abyss-config/Jellyfin.Plugin.FileTransformation.xml \
+                 /config/plugins/configurations/Jellyfin.Plugin.FileTransformation.xml
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            - name: abyss-config
+              mountPath: /abyss-config
       containers:
         - name: jellyfin
           image: jellyfin/jellyfin:latest
@@ -40,6 +65,24 @@ spec:
               mountPath: /cache
             - name: media
               mountPath: /medias
+            # Abyss' CSS and Spotlight assets, served by Jellyfin's own static
+            # file handler as /web/ui/*. Mounting a subdirectory of the image's
+            # web root leaves the rest of jellyfin-web untouched, and the
+            # injected <link>/<script> tags reference them relatively, so the
+            # theme itself is pinned in git rather than pulled from jsDelivr
+            # at runtime.
+            #
+            # Not fully offline: abyss.css still @imports Google Fonts and a
+            # material-icons woff2 from jsDelivr, and spotlight.html polls the
+            # GitHub releases API for update notices (admin users only, every
+            # 6h). Without egress the theme degrades to fallback fonts; it does
+            # not break.
+            #
+            # File Transformation only intercepts /web/ paths it has a
+            # registered transformation for, so these pass straight through.
+            - name: abyss-web
+              mountPath: /jellyfin/jellyfin-web/ui
+              readOnly: true
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -49,6 +92,16 @@ spec:
         - name: media
           persistentVolumeClaim:
             claimName: media-storage
+        # Both ConfigMaps come from a configMapGenerator, so their names carry
+        # a content hash: editing any Abyss file renames the ConfigMap, which
+        # changes the pod template and rolls the Deployment. No checksum
+        # annotation is needed.
+        - name: abyss-web
+          configMap:
+            name: jellyfin-abyss-web
+        - name: abyss-config
+          configMap:
+            name: jellyfin-abyss-config
 ---
 apiVersion: v1
 kind: Service
