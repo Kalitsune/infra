@@ -120,6 +120,56 @@ state in Jellyfin's database, not server config, so set them once in
 `Settings > Display` and `Settings > Home`. Abyss needs the Dark base theme to
 render correctly.
 
+## Login page: SSO + Quick Connect only
+
+The login page shows the Pocket ID (FoxID!) button and Quick Connect. Every
+password entry point is removed by a second transformation in
+`abyss/Jellyfin.Plugin.FileTransformation.xml`, which injects a stylesheet
+hiding `.manualLoginForm`, `.btnManual`, `.btnForgotPassword` and `#divUsers`,
+and forces `.visualLoginForm` visible so the page is not blank.
+
+`.visualLoginForm` needs forcing because jellyfin-web decides which form to
+show from `GET /Users/Public`, which returns `[]` here (no user has "display
+on login screen" set). With an empty list the page calls its `L()` branch:
+`.manualLoginForm` is unhidden and `.visualLoginForm` gets `.hide`. Hiding the
+manual form alone therefore leaves nothing on screen. The override is
+`#loginPage .visualLoginForm.hide` — one id plus two classes, which outranks
+jellyfin-web's own `.hide{display:none!important}` in `index.html`'s inline
+`<style>`; both carry `!important`, so specificity is what decides.
+
+Quick Connect needs no injection: `btnQuick` ships with `hide` and the page
+removes it itself once `GET /QuickConnect/Enabled` returns `true`, which it
+does. The SSO button is not injected here either — the plugin writes it into
+`BrandingOptions.LoginDisclaimer` as a marker-fenced managed block.
+
+**This is cosmetic.** `POST /Users/AuthenticateByName` still accepts a
+password, and native clients (Android, TV) draw their own login UI which no
+amount of web CSS touches. It removes the password door from the web page, not
+from the server.
+
+Real enforcement is the SSO plugin's SSO-only mode (`DisablePasswordLogin`),
+and it cannot be shipped from this repo:
+
+- it is settable only through the elevated `POST /sso/SSO-Only/Enable`, which
+  demands a designated break-glass admin that keeps a working password — a
+  fail-closed guard against locking every admin out when Pocket ID is down;
+- the plugin's declarative sources (a mounted file, or `JELLYFIN_SSO_CONFIG__*`
+  env vars) refuse any key outside `OidConfigs`/`SamlConfigs`, and a refusal
+  takes the whole source down with it;
+- seeding `SSO-Auth.xml` from a ConfigMap is not an option either: that file
+  holds server-managed state (canonical account links, the encrypted client
+  secret) that an init container would overwrite on every boot.
+
+So if you want the API closed too, enable it from the SSO plugin's own
+settings page after designating a break-glass admin, and note it here — it is
+live state this repo does not own.
+
+To get the password form back (Pocket ID outage, break-glass), delete the
+`ab455000-0002-…` transformation from
+`abyss/Jellyfin.Plugin.FileTransformation.xml` and push; Flux rolls the pod and
+the init container reseeds. Out of band, any native client still logs in with a
+password without touching this.
+
 ## Storage
 
 `jellyfin-config` is `local-path`, not `truenas-nfs`: Jellyfin keeps its

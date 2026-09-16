@@ -27,6 +27,22 @@
   Moonfin registers its own index.html transformation at startup. Both live in
   the same pipeline and both run; Moonfin injects at `</head>`, so they do not
   overlap.
+
+  The second transformation is login policy, not theming: it removes every
+  password entry point from the login page, leaving Quick Connect and the
+  Pocket ID (FoxID!) button. Both transformations anchor on `</body>` and run
+  in array order over the same stream, so the second sees the first's output;
+  each anchor occurs once, so neither can double-inject.
+
+  IT IS COSMETIC. `POST /Users/AuthenticateByName` still accepts a password -
+  hiding the form removes the door from the page, not from the API. Real
+  enforcement is the SSO plugin's SSO-only mode (`DisablePasswordLogin`),
+  which is reachable only through its elevated `POST /sso/SSO-Only/Enable`
+  endpoint and requires a designated break-glass admin that keeps a working
+  password. It cannot be set from a manifest: the plugin's declarative
+  environment source (JELLYFIN_SSO_CONFIG__*) refuses any variable outside
+  OidConfigs/SamlConfigs, and seeding SSO-Auth.xml would clobber the
+  server-managed canonical links and the encrypted client secret it holds.
 -->
 <PluginConfiguration xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xsd="http://www.w3.org/2001/XMLSchema">
   <DebugLoggingState>Disabled</DebugLoggingState>
@@ -36,6 +52,12 @@
       <FilenamePattern>index.html</FilenamePattern>
       <SearchText>&lt;/body&gt;</SearchText>
       <ReplaceText>&lt;link rel="stylesheet" href="ui/abyss.css" data-abyss-theme&gt;&lt;script src="ui/spotlight-loader.js" data-abyss-spotlight&gt;&lt;/script&gt;&lt;/body&gt;</ReplaceText>
+    </PluginDefinedTransformation>
+    <PluginDefinedTransformation>
+      <Id>ab455000-0002-4000-8000-000000000002</Id>
+      <FilenamePattern>index.html</FilenamePattern>
+      <SearchText>&lt;/body&gt;</SearchText>
+      <ReplaceText>&lt;style data-sso-only-login&gt;#loginPage .manualLoginForm,#loginPage .btnManual,#loginPage .btnForgotPassword,#loginPage #divUsers{display:none!important}#loginPage .visualLoginForm.hide{display:block!important}&lt;/style&gt;&lt;/body&gt;</ReplaceText>
     </PluginDefinedTransformation>
   </Transformations>
 </PluginConfiguration>
