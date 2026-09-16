@@ -1,0 +1,108 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: draupnir-config
+  namespace: matrix
+data:
+  # Draupnir's whole config minus the access token, which is mounted from
+  # secret.yaml and passed with --access-token-path (config.ts reads the first
+  # line of that file and overwrites `accessToken`). Everything not set here
+  # keeps the upstream default from config/default.yaml; only deliberate
+  # deviations are written out, so this file reads as a list of decisions.
+  #
+  # Reference: https://the-draupnir-project.github.io/draupnir-documentation/
+  # Validated by running v3.1.0 in-cluster with this exact file shape:
+  # config parsed, stores migrated, healthz bound, and it got as far as
+  # /_matrix/client/v3/account/whoami (401 on a deliberately bogus token).
+  production.yaml: |
+    # Where Draupnir calls the client-server API. In-cluster Service: this
+    # traffic never needs to leave the cluster, and routing it through
+    # matrix.kalitsune.net would hairpin through Envoy and the WAN for every
+    # /sync. Same choice as ../hookshot.
+    homeserverUrl: "http://continuwuity.matrix.svc.cluster.local:8008"
+
+    # Only used to fetch abuse reports through /_synapse/ admin endpoints,
+    # which continuwuity does not implement (see pollReports below). Kept
+    # identical to homeserverUrl so nothing can accidentally reach out over
+    # the public name.
+    rawHomeserverUrl: "http://continuwuity.matrix.svc.cluster.local:8008"
+
+    # Mount root of the PVC. Holds bot.json, the four SQLite stores and the
+    # rust crypto store — see pvc.yaml for why that is local-path.
+    dataPath: "/data/storage"
+
+    # E2EE. Repo policy (../README.md) is that every Matrix service supports
+    # encryption, so the management room is encrypted and Draupnir needs a
+    # crypto-capable device.
+    #
+    # Upstream calls this "experimental" and does NOT recommend it — their
+    # reasoning is that E2EE buys a moderation bot little, because Draupnir
+    # does not enforce cross-signing and so cannot resist impersonation:
+    # https://the-draupnir-project.github.io/draupnir-documentation/concepts/encryption
+    # That argument is about whether encryption is *useful* here, not about
+    # whether it works. The local policy wins; the caveat is recorded in
+    # README.md so nobody re-opens it from the upstream page alone.
+    #
+    # Two hard requirements come with this flag:
+    #   - pantalaimon.use must stay false (index.ts throws if both are set)
+    #   - the access token must be CLEAN, i.e. from a device that has never
+    #     done E2EE. `!admin users issue-token` mints a fresh device, so that
+    #     holds; a token lifted out of an Element session does not.
+    experimentalRustCrypto: true
+
+    # The room where commands are issued. Anyone in it controls the bot, and
+    # Draupnir has no finer access control than room membership.
+    #
+    # An ALIAS, not a room ID: the room is created by hand (it must be
+    # encrypted, which the bot cannot do for itself) and an alias survives
+    # being recreated. Draupnir resolves it at startup and boots into safe
+    # mode if it cannot — that is the tell for "the alias is not published" or
+    # "the bot was never invited", not a crash.
+    #
+    # Mutually exclusive with `initialManager` (the v3.1.0 Zero Touch flow):
+    # setting both throws at config read. Zero Touch is not usable here
+    # because the room it creates for you is unencrypted.
+    managementRoom: "#draupnir:kalitsune.net"
+
+    # Draupnir stores each protection's settings as state events in the
+    # management room, so it needs power level 50 there. Without it, settings
+    # silently fail to save and PolicyChangeNotification creates a new
+    # notification room on every restart.
+
+    # Only members of the management room may invite the bot into a room.
+    # Default, pinned because it is the entire admission policy.
+    autojoinOnlyIfManager: true
+
+    # Protected rooms are added deliberately with `!draupnir rooms add`.
+    # Turning this on would make the bot protect every room it is in,
+    # including ones it was invited to for an unrelated reason.
+    protectAllJoinedRooms: false
+
+    # continuwuity is not Synapse. Both report-collection paths are Synapse
+    # -specific (`/_synapse/admin/v1/event_reports` for polling, and the
+    # intercepting web API needs a reverse proxy in front of Synapse), so
+    # neither is enabled and `web` stays off entirely — no listener, no route.
+    pollReports: false
+    web:
+      enabled: false
+
+    # Caches room state in SQLite so a restart does not re-fetch /state for
+    # every protected room. Upstream default is true; pinned because it is
+    # the reason this app needs a PVC at all.
+    roomStateBackingStore:
+      enabled: true
+
+    # Kubernetes health probes. Unhealthy until the bot has actually reached
+    # the homeserver and started monitoring rooms, which is what makes this a
+    # meaningful readiness signal rather than a liveness check on node.
+    # 418 (the default unhealthyStatus) is not 2xx, so httpGet fails on it.
+    health:
+      healthz:
+        enabled: true
+        port: 8080
+        # Default is all addresses already; explicit because 127.0.0.1 in a
+        # container means the kubelet cannot reach the probe.
+        address: "0.0.0.0"
+        endpoint: "/healthz"
+
+    logLevel: "INFO"

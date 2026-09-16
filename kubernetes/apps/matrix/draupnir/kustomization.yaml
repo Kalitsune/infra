@@ -1,0 +1,19 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - configmap.yaml
+  # Holds only the bot's access token. Continuwuity keeps the other half of
+  # that pair (the device it was issued to), so rotating means re-running
+  # `!admin users issue-token draupnir` and re-encrypting here — not a
+  # git-only operation. See README.md.
+  - secret.yaml
+  - pvc.yaml
+  - deployment.yaml
+
+# No httproute.yaml on purpose: the only listener is /healthz, which the
+# kubelet reaches on the pod IP. Draupnir's `web` API is disabled (it is
+# Synapse-specific), so there is nothing to expose and no Service either.
+
+# The matrix namespace is created by the continuwuity app, which this depends
+# on anyway — a moderation bot is meaningless without the homeserver it
+# moderates. Deliberately not re-declared here, matching ../hookshot.

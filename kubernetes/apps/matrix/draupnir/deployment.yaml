@@ -1,0 +1,149 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: draupnir
+  namespace: matrix
+spec:
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate. Every store on the PVC is SQLite, and the
+    # rust crypto store is a single Matrix DEVICE — two pods sharing it would
+    # both claim the same device_id and corrupt Olm sessions, on top of the
+    # usual SQLite-with-two-writers problem. RollingUpdate's default
+    # maxSurge: 1 creates exactly that overlap on every image bump.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: draupnir
+  template:
+    metadata:
+      annotations:
+        # Bump whenever configmap.yaml or secret.yaml changes.
+        #
+        # production.yaml arrives as a MOUNTED FILE, which does update in
+        # place — but Draupnir reads it once at startup (config.ts
+        # readConfigSource), so the running process keeps the old values and
+        # the deploy looks applied when it is not. The access token is read
+        # the same way, once, from --access-token-path. This annotation is
+        # part of the pod template, so bumping it is what actually applies an
+        # edit to either file.
+        kalitsune.net/config-generation: "1"
+      labels:
+        app.kubernetes.io/name: draupnir
+    spec:
+      # Nothing here reads a Service link. Matches ../continuwuity and
+      # ../hookshot; also removes any chance of an injected DRAUPNIR_* or
+      # CONTINUWUITY_* var colliding with something.
+      enableServiceLinks: false
+      securityContext:
+        # The image ships no USER and would run as root. It does not need to:
+        # verified by running v3.1.0 as uid 10000 with a read-only root
+        # filesystem — config parsed, all four SQLite stores created and
+        # migrated, healthz bound, and the client reached
+        # /_matrix/client/v3/account/whoami.
+        runAsNonRoot: true
+        runAsUser: 10000
+        runAsGroup: 10000
+        # ConfigMap and Secret volumes mount root:root, so uid 10000 could not
+        # read the access token (EACCES, crashloop). fsGroup makes the kubelet
+        # chgrp them to this gid — 0400 below lands as 0440 root:10000. It
+        # also gives the PVC group-write, which is what lets Draupnir create
+        # /data/storage itself (verified: no init container needed).
+        fsGroup: 10000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: draupnir
+          # v3.1.0, current stable (2026-05-07).
+          # index digest sha256:d164288b426e55db56d5c7784b6aaafcf7f1613a6fc08c33245e6459406d0ac2
+          image: ghcr.io/the-draupnir-project/draupnir:v3.1.0
+          # ENTRYPOINT is draupnir-entrypoint.sh and CMD is ["bot"]; the first
+          # argument selects bot vs appservice mode, so `bot` must be repeated
+          # here or the flags below would be taken as the mode.
+          #
+          # --draupnir-config is required: without it Draupnir falls back to
+          # the node-config lookup in NODE_CONFIG_DIR (/data/config) and warns
+          # that the bare form is deprecated.
+          #
+          # --access-token-path keeps the token out of the config file and out
+          # of the process environment — config.ts reads the first line of the
+          # file and overwrites `accessToken` in memory.
+          args:
+            - bot
+            - --draupnir-config
+            - /config/production.yaml
+            - --access-token-path
+            - /secrets/access_token
+          ports:
+            # healthz only. There is no Service and no HTTPRoute: the kubelet
+            # probes the pod IP directly, and nothing else should be able to
+            # reach this. Draupnir's `web` API (abuse-report interception,
+            # synapse-http-antispam) is off — both are Synapse-only.
+            - name: healthz
+              containerPort: 8080
+          # /healthz answers 418 until Draupnir has authenticated, resolved
+          # the management room and started monitoring, and 200 after. So this
+          # proves the bot is actually wired to Matrix, not merely that node
+          # is running. httpGet treats 418 as a failure, which is the point.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            periodSeconds: 5
+            # Generous: on a cold start it waits for continuwuity, then syncs
+            # and verifies permissions in every protected room.
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            periodSeconds: 10
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 6
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            # Root FS is read-only. Writable state is the PVC at /data, and
+            # the image sets SQLITE_TMPDIR=/data so SQLite's temp files land
+            # there too — verified: no writable /tmp is needed.
+            readOnlyRootFilesystem: true
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              # No CPU limit: a ban applied across many protected rooms is a
+              # burst of signature and state work, and throttling it stretches
+              # the window in which a spammer is still live.
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: draupnir-data
+        - name: config
+          configMap:
+            name: draupnir-config
+        - name: secrets
+          secret:
+            secretName: draupnir-secrets
+            # 0400: readable only by the runAsUser above (0440 after fsGroup),
+            # invisible to anyone else. This is a full-privilege token for the
+            # bot's Matrix account.
+            defaultMode: 0400
