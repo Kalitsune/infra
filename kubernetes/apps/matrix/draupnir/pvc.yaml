@@ -1,0 +1,22 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: draupnir-data
+  namespace: matrix
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Deliberately NOT truenas-nfs. Everything Draupnir writes here is SQLite:
+  # the room-state backing store, the hash store, two audit logs, and the rust
+  # crypto store (StoreType.Sqlite). SQLite coordinates writers with fcntl()
+  # locks and WAL, neither of which is reliable over NFS — the failure mode is
+  # a corrupted store noticed long after the fact. See AGENT.md storage.
+  #
+  # Accepted: the volume is pinned to one node and gets no TrueNAS snapshots.
+  # Losing it costs the crypto device identity (rejoin/re-verify) and the
+  # room-state cache (refetched from the homeserver), not policy data — that
+  # lives in Matrix rooms.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 1Gi
