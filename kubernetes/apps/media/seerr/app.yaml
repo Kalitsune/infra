@@ -1,12 +1,11 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  # Deliberately still "jellyseerr-config" while everything else is "seerr".
-  # local-path has reclaimPolicy: Delete and this Kustomization prunes, so
-  # renaming the PVC deletes the volume and Seerr's entire config database.
-  # Renaming it is a manual migration (flip the PV to Retain, re-bind), not a
-  # find-and-replace.
-  name: jellyseerr-config
+  # Renamed from "jellyseerr-config" by copying the data into this new claim
+  # while the Deployment was scaled to 0 (local-path is reclaimPolicy: Delete,
+  # so the old PV died with the old claim on the next prune). Any future rename
+  # needs the same copy-then-switch dance, never a bare find-and-replace.
+  name: seerr-config
   namespace: media
 spec:
   accessModes: [ReadWriteOnce]
@@ -43,9 +42,9 @@ spec:
       # zombie processes from health checks accumulate and eventually exhaust
       # the PID limit.
       shareProcessNamespace: true
-      # Seerr runs as uid 1000 (node), but the PVC was created by Jellyseerr
-      # which ran as root. An init container fixes ownership once; after that
-      # Seerr itself maintains the files.
+      # Seerr runs as uid 1000 (node), but the config tree was inherited from
+      # Jellyseerr which ran as root. An init container fixes ownership once;
+      # after that Seerr itself maintains the files.
       initContainers:
         - name: fix-perms
           image: busybox:latest
@@ -67,7 +66,7 @@ spec:
       volumes:
         - name: config
           persistentVolumeClaim:
-            claimName: jellyseerr-config
+            claimName: seerr-config
 ---
 apiVersion: v1
 kind: Service
