@@ -13,7 +13,7 @@ spec:
     # radarr/sonarr/prowlarr/bazarr/torrent .lab.kalitsune.net
     - "*.lab.kalitsune.net"
     - "*.hermes.kalitsune.net"
-    # requests.watch.kalitsune.net (jellyseerr)
+    # requests.watch.kalitsune.net (seerr)
     - "*.watch.kalitsune.net"
   issuerRef:
     name: letsencrypt-prod

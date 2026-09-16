@@ -5,5 +5,5 @@ resources:
   - namespace.yaml
   - media-pvc.yaml
   - jellyfin
-  - jellyseerr
+  - seerr
   - download-stack
