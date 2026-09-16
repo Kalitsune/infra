@@ -14,9 +14,17 @@ spec:
         name: cilium
         namespace: flux-system
   install:
+    timeout: 10m
     remediation:
       retries: 3
   upgrade:
+    # The DaemonSet rollout is the slow part of a Cilium upgrade and Helm's
+    # 5m default is not enough for it on this cluster: an agent pod that cannot
+    # be replaced (a NotReady node holding a stale one) pins the rollout at
+    # n-1/n until the clock runs out, the upgrade is marked failed, and a
+    # failed upgrade with no healthy prior release stalls the HelmRelease
+    # terminally on MissingRollbackTarget.
+    timeout: 10m
     cleanupOnFail: true
     remediation:
       strategy: rollback
