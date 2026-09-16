@@ -78,11 +78,31 @@ data:
     # including ones it was invited to for an unrelated reason.
     protectAllJoinedRooms: false
 
-    # continuwuity is not Synapse. Both report-collection paths are Synapse
-    # -specific (`/_synapse/admin/v1/event_reports` for polling, and the
-    # intercepting web API needs a reverse proxy in front of Synapse), so
-    # neither is enabled and `web` stays off entirely — no listener, no route.
+    # Abuse reports stay off. Polling needs Synapse's
+    # `/_synapse/admin/v1/event_reports`, which continuwuity does not
+    # implement, and the intercepting path needs a reverse proxy rewriting
+    # the client report endpoint. Reports land in the admin room instead.
     pollReports: false
+
+    # `web` is off, so there is no listener, no Service and no HTTPRoute.
+    #
+    # This is a real, available feature left deliberately unused, not an
+    # incompatibility: continuwuity v26.8.1 speaks Draupnir's antispam
+    # protocol natively (`[global.antispam.draupnir]`, base_url + secret,
+    # implemented in src/service/antispam) and calls user_may_invite and
+    # user_may_join_room on it. Turning it on would let Draupnir block
+    # spammers at the join, before they are ever in a room, and is what room
+    # takedown policies need.
+    #
+    # Not enabled yet because it is fail-CLOSED at the homeserver: if
+    # Draupnir is unreachable the callback errors and the homeserver blocks
+    # the join or invite. With the bot a single replica on one node, every
+    # restart, image bump and crashloop becomes a server-wide outage of
+    # joins and invites. Enable once Draupnir is proven stable here, and
+    # treat it as a change to continuwuity's availability, not just to
+    # moderation. Requires `web.enabled: true` plus
+    # `web.synapseHTTPAntispam.{enabled,authorization}`, a Service, and the
+    # same shared secret in continuwuity's config.
     web:
       enabled: false
 

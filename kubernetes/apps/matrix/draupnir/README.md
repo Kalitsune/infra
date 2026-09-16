@@ -41,20 +41,30 @@ client signed in as `@maple:kalitsune.net`:
 1. Create the account and mint a token:
 
    ```
-   !admin users create draupnir
-   !admin users issue-token draupnir
+   !admin users create draupnir <password>
+   !admin users issue-token draupnir <password>
    ```
 
-   The bot must be a **local** account, not a Pocket ID user — this
-   homeserver runs OIDC delegation in `exclusive` mode, so password login is
-   impossible and `issue-token` explicitly does not work on IdP-imported
-   accounts. Same constraint as the Hermes bots, see
-   `../../hermes/hermes/README.md`.
+   Both take the password as a positional argument (`create` generates and
+   prints one if omitted; `issue-token` *requires* it — it calls
+   `check_password` before minting). Pick a long random one; it is only ever
+   used for these two commands, since the bot authenticates with the token
+   afterwards. Note these commands print the password and the token into the
+   admin room.
 
-   The token must also be **clean**, i.e. belong to a device that has never
-   done E2EE — `experimentalRustCrypto` (below) rejects a token lifted out of
-   an existing Element session. `issue-token` mints a fresh device, so it
-   qualifies.
+   The bot must be a **local** account, not a Pocket ID user. This homeserver
+   runs OIDC delegation, so `/_matrix/client/v3/login` returns
+   `M_UNRECOGNIZED` and password login is impossible — but `issue-token`
+   bypasses the login endpoint and mints a device directly, which is exactly
+   why it works here and why the account must be local. Upstream's help text
+   is explicit that it "will not work on shadow users, such as appservice
+   puppets or accounts imported from an identity provider". Same constraint
+   as the Hermes bots, see `../../hermes/hermes/README.md`.
+
+   The token is also **clean** by construction — `issue-token` creates a
+   brand new device that has never done E2EE, which is what
+   `experimentalRustCrypto` (below) requires. A token lifted from an existing
+   Element session would be rejected.
 
 2. Put the token in `secret.yaml` and roll the pod:
 
@@ -125,13 +135,30 @@ step 3 above is incomplete.
 through Envoy and the WAN. `rawHomeserverUrl` is set to the same value; it is
 only used for Synapse admin endpoints, which continuwuity does not implement.
 
-### continuwuity is not Synapse, so two features stay off
+### Abuse reports are off; antispam is available but deliberately not on
 
-`pollReports` needs `/_synapse/admin/v1/event_reports`, and the intercepting
-abuse-report web API needs a reverse proxy in front of Synapse. Neither
-exists here, so `web.enabled` is `false` and there is no listener beyond
-healthz. `admin.enableMakeRoomAdminCommand` is left at its default `false`
-for the same reason.
+`pollReports` needs Synapse's `/_synapse/admin/v1/event_reports`, which
+continuwuity does not implement, and the intercepting variant needs a reverse
+proxy rewriting the client report endpoint. So reports land in the admin room
+instead. `admin.enableMakeRoomAdminCommand` is left at its default `false` for
+the same Synapse-only reason.
+
+Draupnir's `web` API is a different story, and **not** a compatibility gap:
+continuwuity v26.8.1 speaks Draupnir's antispam protocol natively
+(`[global.antispam.draupnir]` with `base_url` + `secret`, implemented in
+`src/service/antispam`), calling `user_may_invite` and `user_may_join_room` on
+the bot. Enabling it would block spammers *at the join*, before they are ever
+in a room, and is what room takedown policies require.
+
+It stays off because the homeserver side is **fail-closed**: upstream's own
+comment says "if an error is returned, the invite should be blocked — the
+antispam service was unreachable, or refused". With Draupnir a single replica
+on one node, every restart, image bump and crashloop would become a
+server-wide outage of joins and invites. Turn it on once the bot has proven
+stable here, and treat it as a change to *continuwuity's availability*, not
+just to moderation. It needs `web.enabled: true`,
+`web.synapseHTTPAntispam.{enabled,authorization}`, a Service, and the same
+shared secret on continuwuity's side.
 
 ### Storage is `local-path`, not `truenas-nfs`
 
