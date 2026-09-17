@@ -81,9 +81,6 @@ spec:
               enabled: false
             account:
               password_registration_enabled: false
-      environment:
-        - name: TEST_ENV
-          value: test
       extraEnv:
         - name: TEST_EXTRA
           value: test
