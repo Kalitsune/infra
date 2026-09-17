@@ -4,3 +4,4 @@ resources:
   - helmrepo.yaml
   - helmrelease.yaml
   - httproute.yaml
+  - namespace.yaml
