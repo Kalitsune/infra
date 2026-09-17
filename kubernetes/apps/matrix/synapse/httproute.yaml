@@ -11,6 +11,16 @@ spec:
     - matrix.kalitsune.net
   rules:
     - matches:
+        - path: { type: Exact, value: / }
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            statusCode: 302
+            hostname: app.element.io
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /
+    - matches:
         - path: { type: Exact, value: /_matrix/client/v3/login }
         - path: { type: Exact, value: /_matrix/client/v3/refresh }
         - path: { type: Exact, value: /_matrix/client/v3/logout }
