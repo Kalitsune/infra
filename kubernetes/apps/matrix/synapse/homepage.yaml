@@ -12,82 +12,57 @@ data:
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <title>Kalitsune Matrix</title>
       <style>
-        :root {
-          --bg: #111827;
-          --panel: #1f2937;
-          --text: #f3f4f6;
-          --accent: #3b82f6;
-          --accent-hover: #60a5fa;
-        }
-        body {
-          background-color: var(--bg);
-          color: var(--text);
-          font-family: system-ui, -apple-system, sans-serif;
-          margin: 0;
-          padding: 2rem;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          min-height: 100vh;
-          box-sizing: border-box;
-        }
-        .card {
-          background: var(--panel);
-          padding: 2.5rem;
-          border-radius: 1rem;
-          box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-          max-width: 400px;
-          width: 100%;
-          text-align: center;
-        }
+        :root { --bg: #111827; --panel: #1f2937; --text: #f3f4f6; --accent: #3b82f6; --accent-hover: #60a5fa; }
+        body { background-color: var(--bg); color: var(--text); font-family: system-ui, sans-serif; margin: 0; padding: 2rem; display: flex; justify-content: center; align-items: center; min-height: 100vh; box-sizing: border-box; }
+        .card { background: var(--panel); padding: 2.5rem; border-radius: 1rem; box-shadow: 0 10px 15px -3px rgba(0,0,0,0.5); max-width: 400px; width: 100%; text-align: center; }
         h1 { margin-top: 0; font-size: 1.5rem; }
         p { color: #9ca3af; line-height: 1.5; margin-bottom: 2rem; }
-        .btn {
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          background: var(--accent);
-          color: white;
-          text-decoration: none;
-          padding: 0.75rem 1rem;
-          border-radius: 0.5rem;
-          margin-bottom: 1rem;
-          font-weight: 600;
-          transition: background 0.2s;
-        }
+        .btn { display: flex; align-items: center; justify-content: center; background: var(--accent); color: white; text-decoration: none; padding: 0.75rem 1rem; border-radius: 0.5rem; margin-bottom: 1rem; font-weight: 600; transition: background 0.2s; }
         .btn:hover { background: var(--accent-hover); }
-        .server-info {
-          margin-top: 2rem;
-          padding-top: 1.5rem;
-          border-top: 1px solid #374151;
-          font-size: 0.875rem;
-          color: #9ca3af;
-        }
-        .server-info code {
-          background: #374151;
-          padding: 0.2rem 0.4rem;
-          border-radius: 0.25rem;
-          color: #e5e7eb;
-        }
+        .server-info { margin-top: 2rem; padding-top: 1.5rem; border-top: 1px solid #374151; font-size: 0.875rem; color: #9ca3af; }
+        .server-info code { background: #374151; padding: 0.2rem 0.4rem; border-radius: 0.25rem; color: #e5e7eb; }
       </style>
     </head>
     <body>
       <div class="card">
         <h1>Welcome to Kalitsune Matrix</h1>
         <p>This is a private Matrix homeserver. Connect using one of the clients below.</p>
-        
         <a href="https://app.element.io/#/login" class="btn" target="_blank" rel="noopener">Element Web</a>
         <a href="https://fluffychat.im/web/" class="btn" style="background: #eab308;" target="_blank" rel="noopener">FluffyChat Web</a>
-        <a href="https://cinny.in" class="btn" style="background: #10b981;" target="_blank" rel="noopener">Cinny Web</a>
         <a href="https://auth.matrix.kalitsune.net/" class="btn" style="background: #6366f1;" target="_blank" rel="noopener">Manage Account (MAS)</a>
-        
-        <div class="server-info">
-          Homeserver URL:<br>
-          <code>https://matrix.kalitsune.net</code>
-        </div>
+        <div class="server-info">Homeserver URL:<br><code>https://matrix.kalitsune.net</code></div>
       </div>
     </body>
     </html>
+  client: |
+    {
+      "m.homeserver": {
+        "base_url": "https://matrix.kalitsune.net"
+      },
+      "org.matrix.msc2965.authentication": {
+        "issuer": "https://auth.matrix.kalitsune.net/",
+        "account": "https://auth.matrix.kalitsune.net/account"
+      }
+    }
+  server: |
+    {
+      "m.server": "matrix.kalitsune.net:443"
+    }
+  default.conf: |
+    server {
+      listen 8080;
+      server_name localhost;
+      root /usr/share/nginx/html;
+      index index.html;
+      location / {
+        try_files $uri $uri/ =404;
+      }
+      location /.well-known/matrix/ {
+        add_header Access-Control-Allow-Origin * always;
+        add_header Content-Type application/json always;
+        try_files $uri =404;
+      }
+    }
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -111,7 +86,17 @@ spec:
             - containerPort: 8080
           volumeMounts:
             - name: html
-              mountPath: /usr/share/nginx/html
+              mountPath: /usr/share/nginx/html/index.html
+              subPath: index.html
+            - name: html
+              mountPath: /usr/share/nginx/html/.well-known/matrix/client
+              subPath: client
+            - name: html
+              mountPath: /usr/share/nginx/html/.well-known/matrix/server
+              subPath: server
+            - name: html
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
           securityContext:
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
