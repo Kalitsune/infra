@@ -99,7 +99,10 @@ spec:
               password_registration_enabled: false
       extraEnv:
         - name: MAS_UPSTREAM_OAUTH2_PROVIDERS_0_CLIENT_SECRET
-          value: "7S7E1jypvATvHNz6bzbEtRfsizzSy8NO"
+          valueFrom:
+            secretKeyRef:
+              name: mas-upstream-oidc
+              key: client_secret
     postgres:
       storage:
         # Postgres manages its own on-disk files and depends on fsync()
