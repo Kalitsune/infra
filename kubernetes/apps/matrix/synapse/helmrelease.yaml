@@ -1,0 +1,43 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: synapse
+  namespace: matrix
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: matrix-synapse
+      version: 3.10.x
+      sourceRef:
+        kind: HelmRepository
+        name: synapse
+        namespace: flux-system
+  install:
+    createNamespace: true
+    remediation:
+      retries: 3
+  values:
+    serverName: kalitsune.net
+    public_baseurl: https://matrix.kalitsune.net
+    # Disable redis and workers to keep it simple and lightweight for homelab initially
+    redis:
+      enabled: false
+    workers:
+      default:
+        enabled: false
+    postgresql:
+      enabled: true
+      global:
+        postgresql:
+          auth:
+            password: "REPLACE_ME_POSTGRES"
+            postgresPassword: "REPLACE_ME_POSTGRES"
+    synapse:
+      config:
+        macaroon_secret_key: "REPLACE_ME_MACAROON"
+        form_secret: "REPLACE_ME_FORM"
+        registration_shared_secret: "REPLACE_ME_REGISTRATION"
+    signingkey:
+      job:
+        enabled: true

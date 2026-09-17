@@ -13,7 +13,7 @@ spec:
   dependsOn:
     # The matrix namespace is created by the continuwuity app, and the shared
     # TURN secret is only meaningful once the homeserver is handing it out.
-    - name: continuwuity
+    - name: synapse
     # turns:// needs a certificate for turn.kalitsune.net, issued by the
     # letsencrypt-prod ClusterIssuer.
     - name: cluster-issuer
