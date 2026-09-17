@@ -21,7 +21,7 @@ data:
       # Where hookshot calls the client-server API. In-cluster Service: this
       # traffic never needs to leave the cluster, and routing it through the
       # public hostname would pointlessly hairpin through Envoy and the WAN.
-      url: http://continuwuity.matrix.svc.cluster.local:8008
+      url: http://synapse-synapse.matrix.svc.cluster.local:8008
 
       # Media URL must be PUBLIC: it is handed to remote services and embedded
       # in events, not fetched by hookshot itself.

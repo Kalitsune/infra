@@ -19,13 +19,13 @@ data:
     # traffic never needs to leave the cluster, and routing it through
     # matrix.kalitsune.net would hairpin through Envoy and the WAN for every
     # /sync. Same choice as ../hookshot.
-    homeserverUrl: "http://continuwuity.matrix.svc.cluster.local:8008"
+    homeserverUrl: "http://synapse-synapse.matrix.svc.cluster.local:8008"
 
     # Only used to fetch abuse reports through /_synapse/ admin endpoints,
     # which continuwuity does not implement (see pollReports below). Kept
     # identical to homeserverUrl so nothing can accidentally reach out over
     # the public name.
-    rawHomeserverUrl: "http://continuwuity.matrix.svc.cluster.local:8008"
+    rawHomeserverUrl: "http://synapse-synapse.matrix.svc.cluster.local:8008"
 
     # Mount root of the PVC. Holds bot.json, the four SQLite stores and the
     # rust crypto store — see pvc.yaml for why that is local-path.
