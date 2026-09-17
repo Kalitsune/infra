@@ -67,7 +67,7 @@ spec:
       # It is also what makes OIDC work for Element X, which will not speak
       # Synapse's legacy SSO flow at all.
       ingress:
-        host: account.kalitsune.net
+        host: auth.matrix.kalitsune.net
       additional:
         # Upstream IdP wiring. Held in a SOPS secret because it carries the
         # Pocket ID client secret; the chart merges any `configSecret` into
@@ -116,6 +116,6 @@ spec:
       #
       # NOTE: the well-known MUST be updated by hand for MAS — clients need
       # `org.matrix.msc2965.authentication` pointing at
-      # https://account.kalitsune.net or Element X cannot find the auth
+      # https://auth.matrix.kalitsune.net or Element X cannot find the auth
       # service. See ./README.md.
       enabled: false
