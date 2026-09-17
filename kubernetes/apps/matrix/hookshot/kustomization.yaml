@@ -6,7 +6,7 @@ resources:
   # homeserver keeps its own copy of the tokens — registered by hand in the
   # #admins room, see README.md — so rotating this Secret is a two-sided
   # operation, not a git-only one.
-  - secret.yaml
+  
   - pvc.yaml
   - redis.yaml
   - deployment.yaml
