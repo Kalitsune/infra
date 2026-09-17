@@ -70,8 +70,24 @@ spec:
         # Pocket ID client secret; the chart merges any `configSecret` into
         # MAS's rendered config at pod start.
         10-upstream-oidc:
-          configSecret: mas-upstream-oidc
-          configSecretKey: upstream-oidc.yaml
+          config: |
+            upstream_oauth2:
+              providers:
+                - id: 01J8T3MCCJ625YBV6F7F71RCQJ
+                  issuer: "https://id.kalitsune.net"
+                  client_id: "7a5bd443-7346-4bd4-8f75-dd0f2705e137"
+                  token_endpoint_auth_method: "client_secret_basic"
+                  scope: "openid profile email"
+                  claims_imports:
+                    localpart:
+                      action: require
+                      template: "{{ user.preferred_username }}"
+                    displayname:
+                      action: suggest
+                      template: "{{ user.name }}"
+                    email:
+                      action: suggest
+                      template: "{{ user.email }}"
         # Local password login is disabled: Pocket ID is the only way in.
         # With exactly one upstream provider and passwords off, MAS skips its
         # own login page and redirects straight to the IdP.
@@ -82,8 +98,8 @@ spec:
             account:
               password_registration_enabled: false
       extraEnv:
-        - name: TEST_EXTRA
-          value: test
+        - name: MAS_UPSTREAM_OAUTH2_PROVIDERS_0_CLIENT_SECRET
+          value: "7S7E1jypvATvHNz6bzbEtRfsizzSy8NO"
     postgres:
       storage:
         # Postgres manages its own on-disk files and depends on fsync()
