@@ -34,33 +34,27 @@ data:
       </div>
     </body>
     </html>
-  client: |
-    {
-      "m.homeserver": {
-        "base_url": "https://matrix.kalitsune.net"
-      },
-      "org.matrix.msc2965.authentication": {
-        "issuer": "https://auth.matrix.kalitsune.net/",
-        "account": "https://auth.matrix.kalitsune.net/account"
-      }
-    }
-  server: |
-    {
-      "m.server": "matrix.kalitsune.net:443"
-    }
   default.conf: |
     server {
       listen 8080;
       server_name localhost;
       root /usr/share/nginx/html;
       index index.html;
+      
       location / {
         try_files $uri $uri/ =404;
       }
-      location /.well-known/matrix/ {
+      
+      location /.well-known/matrix/client {
         add_header Access-Control-Allow-Origin * always;
         add_header Content-Type application/json always;
-        try_files $uri =404;
+        return 200 '{"m.homeserver":{"base_url":"https://matrix.kalitsune.net"},"org.matrix.msc2965.authentication":{"issuer":"https://auth.matrix.kalitsune.net/","account":"https://auth.matrix.kalitsune.net/account"}}';
+      }
+      
+      location /.well-known/matrix/server {
+        add_header Access-Control-Allow-Origin * always;
+        add_header Content-Type application/json always;
+        return 200 '{"m.server":"matrix.kalitsune.net:443"}';
       }
     }
 ---
@@ -89,16 +83,9 @@ spec:
               mountPath: /usr/share/nginx/html/index.html
               subPath: index.html
             - name: html
-              mountPath: /usr/share/nginx/html/.well-known/matrix/client
-              subPath: client
-            - name: html
-              mountPath: /usr/share/nginx/html/.well-known/matrix/server
-              subPath: server
-            - name: html
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
           securityContext:
-            readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
