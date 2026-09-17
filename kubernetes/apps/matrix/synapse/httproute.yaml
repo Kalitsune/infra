@@ -12,12 +12,18 @@ spec:
   rules:
     - matches:
         - path: {type: Exact, value: /}
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            statusCode: 302
+            hostname: app.element.io
+    - matches:
         - path:
             type: PathPrefix
             value: /.well-known
       backendRefs:
-        - name: matrix-homepage
-          port: 8080
+        - name: synapse-well-known
+          port: 8010
     - matches:
         - path: {type: Exact, value: /_matrix/client/v3/login}
         - path: {type: Exact, value: /_matrix/client/v3/refresh}

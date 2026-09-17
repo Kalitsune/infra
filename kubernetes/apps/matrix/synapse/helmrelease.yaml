@@ -109,13 +109,12 @@ spec:
     elementAdmin:
       enabled: false
     wellKnownDelegation:
-      # /.well-known/matrix/{server,client} on the apex is served by the
-      # website project on Vercel, NOT by this cluster (see AGENT.md). The
-      # apex does not even route here, so enabling this would render an
-      # Ingress that can never be reached.
-      #
-      # NOTE: the well-known MUST be updated by hand for MAS — clients need
-      # `org.matrix.msc2965.authentication` pointing at
-      # https://auth.matrix.kalitsune.net or Element X cannot find the auth
-      # service. See ./README.md.
-      enabled: false
+      enabled: true
+      additional:
+        client: |
+          {
+            "org.matrix.msc2965.authentication": {
+              "issuer": "https://auth.matrix.kalitsune.net/",
+              "account": "https://auth.matrix.kalitsune.net/account"
+            }
+          }
