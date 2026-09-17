@@ -32,7 +32,6 @@ spec:
     # means wiping the database. Bare apex so IDs read @you:kalitsune.net,
     # while the service itself is served from matrix.kalitsune.net.
     serverName: kalitsune.net
-
     # This cluster has no Ingress controller — it is Gateway API via Envoy
     # Gateway, and routes live in the app's own httproute.yaml. The chart can
     # only emit Ingress objects, so its TLS handling is switched off and the
@@ -42,7 +41,6 @@ spec:
     # what populates public_baseurl / MAS's http.public_base.
     ingress:
       tlsEnabled: false
-
     synapse:
       ingress:
         host: matrix.kalitsune.net
@@ -59,7 +57,6 @@ spec:
       appservices:
         - secret: hookshot-secrets
           secretKey: registration.yml
-
     matrixAuthenticationService:
       # MAS is the Matrix 2.0 auth layer (MSC3861). Synapse delegates
       # /login, /logout and /refresh to it entirely — see the login paths in
@@ -84,7 +81,12 @@ spec:
               enabled: false
             account:
               password_registration_enabled: false
-
+      environment:
+        - name: TEST_ENV
+          value: test
+      extraEnv:
+        - name: TEST_EXTRA
+          value: test
     postgres:
       storage:
         # Postgres manages its own on-disk files and depends on fsync()
@@ -92,7 +94,6 @@ spec:
         # local-path pins this to the worker node; the trade-off is accepted
         # per AGENT.md. No TrueNAS snapshots — back up with pg_dump.
         storageClassName: local-path
-
     # Components this repo already runs, or does not want, disabled so the
     # chart does not deploy a second copy.
     matrixRTC:
