@@ -12,11 +12,9 @@ spec:
   rules:
     - matches:
         - path: {type: Exact, value: /}
-      filters:
-        - type: RequestRedirect
-          requestRedirect:
-            statusCode: 302
-            hostname: app.element.io
+      backendRefs:
+        - name: matrix-homepage
+          port: 80
     - matches:
         - path:
             type: PathPrefix

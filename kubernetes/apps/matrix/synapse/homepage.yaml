@@ -1,0 +1,144 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: matrix-homepage
+  namespace: matrix
+data:
+  index.html: |
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Matrix Server</title>
+      <style>
+        :root {
+          --bg: #1C1410;
+          --text: #F0E1D3;
+          --surface: #2A1F19;
+          --accent: #C77B51;
+          --btn-bg: #3A2B22;
+          --border: #5C4636;
+        }
+        body {
+          background: var(--bg);
+          color: var(--text);
+          font-family: system-ui, -apple-system, sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          height: 100vh;
+          margin: 0;
+        }
+        .container {
+          background: var(--surface);
+          border: 1px solid var(--accent);
+          border-radius: 10px;
+          padding: 2.5rem 3rem;
+          text-align: center;
+          box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+          max-width: 400px;
+          width: 90%;
+        }
+        h1 {
+          color: var(--accent);
+          margin-top: 0;
+          font-weight: 600;
+          letter-spacing: -0.5px;
+        }
+        p {
+          color: #B89A82;
+          margin-bottom: 2rem;
+        }
+        .links {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        a.btn {
+          background: var(--btn-bg);
+          color: var(--text);
+          text-decoration: none;
+          padding: 0.8rem 1.2rem;
+          border-radius: 999px;
+          border: 1px solid var(--border);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 0.75rem;
+          font-weight: 500;
+          transition: all 0.2s;
+        }
+        a.btn:hover {
+          background: var(--accent);
+          color: #1C1410;
+          border-color: var(--accent);
+        }
+        svg {
+          width: 1.25rem;
+          height: 1.25rem;
+          fill: currentColor;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <h1>Matrix</h1>
+        <p>kalitsune.net</p>
+        <div class="links">
+          <a class="btn" href="https://app.element.io">
+            <svg viewBox="0 0 24 24"><path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.662 17.58l-5.748-3.003V8.43h2.15v5.1l4.595 2.4-1.01 1.65H17.65l.012-.001z" fill-rule="evenodd" clip-rule="evenodd"/></svg>
+            Element
+          </a>
+          <a class="btn" href="https://fluffychat.im/web/">
+            <svg viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-2-5.5c0 .83-.67 1.5-1.5 1.5S7 15.33 7 14.5 7.67 13 8.5 13s1.5.67 1.5 1.5zm7 0c0 .83-.67 1.5-1.5 1.5s-1.5-.67-1.5-1.5.67-1.5 1.5-1.5 1.5.67 1.5 1.5zM12 9c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z"/></svg>
+            FluffyChat
+          </a>
+          <a class="btn" href="https://auth.matrix.kalitsune.net/account">
+            <svg viewBox="0 0 24 24"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+            Account Manager
+          </a>
+        </div>
+      </div>
+    </body>
+    </html>
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: matrix-homepage
+  namespace: matrix
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: matrix-homepage
+  template:
+    metadata:
+      labels:
+        app: matrix-homepage
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: html
+              mountPath: /usr/share/nginx/html
+      volumes:
+        - name: html
+          configMap:
+            name: matrix-homepage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: matrix-homepage
+  namespace: matrix
+spec:
+  selector:
+    app: matrix-homepage
+  ports:
+    - port: 80
+      targetPort: 80
