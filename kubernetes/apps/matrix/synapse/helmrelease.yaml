@@ -7,37 +7,115 @@ spec:
   interval: 30m
   chart:
     spec:
-      chart: matrix-synapse
-      version: 3.10.x
+      chart: matrix-stack
+      # Pinned to a patch range, not a major range: ESS versions are CalVer
+      # (26.9.x == Sept 2026) and a minor bump can change chart-managed
+      # StatefulSet fields. Read the changelog before widening this.
+      version: 26.9.x
       sourceRef:
         kind: HelmRepository
-        name: synapse
+        name: ess
         namespace: flux-system
   install:
-    createNamespace: true
     remediation:
       retries: 3
+  upgrade:
+    # The chart runs pre-install/pre-upgrade hook Jobs (init-secrets,
+    # deployment-markers, synapse-check-config) before anything rolls; on a
+    # cold start those wait on Postgres coming up. Helm's 5m default expires
+    # mid-hook and leaves the release stalled with no rollback target.
+    remediation:
+      retries: 3
+  timeout: 20m
   values:
+    # Immutable. server_name is baked into every user/room ID; changing it
+    # means wiping the database. Bare apex so IDs read @you:kalitsune.net,
+    # while the service itself is served from matrix.kalitsune.net.
     serverName: kalitsune.net
-    public_baseurl: https://matrix.kalitsune.net
-    # Disable redis and workers to keep it simple and lightweight for homelab initially
-    redis:
-      enabled: false
-    workers:
-      default:
-        enabled: false
-    postgresql:
-      enabled: true
-      global:
-        postgresql:
-          auth:
-            password: "REPLACE_ME_POSTGRES"
-            postgresPassword: "REPLACE_ME_POSTGRES"
+
+    # This cluster has no Ingress controller — it is Gateway API via Envoy
+    # Gateway, and routes live in the app's own httproute.yaml. The chart can
+    # only emit Ingress objects, so its TLS handling is switched off and the
+    # emitted Ingresses are inert: nothing reconciles them. They are left
+    # rendered rather than fought with, because `ingress.host` is *required*
+    # by the chart's own validation for every enabled component and is also
+    # what populates public_baseurl / MAS's http.public_base.
+    ingress:
+      tlsEnabled: false
+
     synapse:
-      config:
-        macaroon_secret_key: "REPLACE_ME_MACAROON"
-        form_secret: "REPLACE_ME_FORM"
-        registration_shared_secret: "REPLACE_ME_REGISTRATION"
-    signingkey:
-      job:
-        enabled: true
+      ingress:
+        host: matrix.kalitsune.net
+      media:
+        storage:
+          size: 50Gi
+          # Media is plain blob storage written once and read many — no
+          # fsync/locking semantics to lose, so NFS is correct here and
+          # survives the pod moving nodes. The databases below do NOT go here.
+          storageClassName: truenas-nfs
+      # Hookshot's appservice registration lives in the bridge's own SOPS
+      # secret in ../hookshot. Synapse must be told to load it or the bridge
+      # cannot authenticate its transactions.
+      appservices:
+        - secret: hookshot-secrets
+          secretKey: registration.yml
+
+    matrixAuthenticationService:
+      # MAS is the Matrix 2.0 auth layer (MSC3861). Synapse delegates
+      # /login, /logout and /refresh to it entirely — see the login paths in
+      # ../synapse/httproute.yaml that point at the MAS Service, not Synapse.
+      # It is also what makes OIDC work for Element X, which will not speak
+      # Synapse's legacy SSO flow at all.
+      ingress:
+        host: account.kalitsune.net
+      additional:
+        # Upstream IdP wiring. Held in a SOPS secret because it carries the
+        # Pocket ID client secret; the chart merges any `configSecret` into
+        # MAS's rendered config at pod start.
+        10-upstream-oidc:
+          configSecret: mas-upstream-oidc
+          configSecretKey: upstream-oidc.yaml
+        # Local password login is disabled: Pocket ID is the only way in.
+        # With exactly one upstream provider and passwords off, MAS skips its
+        # own login page and redirects straight to the IdP.
+        20-passwords:
+          config: |
+            passwords:
+              enabled: false
+            account:
+              password_registration_enabled: false
+
+    postgres:
+      storage:
+        # Postgres manages its own on-disk files and depends on fsync()
+        # durability plus byte-range locking that NFS does not reliably give.
+        # local-path pins this to the worker node; the trade-off is accepted
+        # per AGENT.md. No TrueNAS snapshots — back up with pg_dump.
+        storageClassName: local-path
+
+    # Components this repo already runs, or does not want, disabled so the
+    # chart does not deploy a second copy.
+    matrixRTC:
+      # Element Call backend. ../livekit already provides the SFU and the JWT
+      # broker on livekit.kalitsune.net. Enabling this would deploy a rival
+      # LiveKit and fight over the MatrixRTC well-known.
+      enabled: false
+    hookshot:
+      # ../hookshot is deployed by hand with its own SOPS registration,
+      # Redis cryptostore and E2EE config. The chart's copy would collide.
+      enabled: false
+    elementWeb:
+      enabled: false
+    elementAdmin:
+      enabled: false
+    wellKnownDelegation:
+      # /.well-known/matrix/{server,client} on the apex is served by the
+      # website project on Vercel, NOT by this cluster (see AGENT.md). The
+      # apex does not even route here, so enabling this would render an
+      # Ingress that can never be reached.
+      #
+      # NOTE: the well-known MUST be updated by hand for MAS — clients need
+      # `org.matrix.msc2965.authentication` pointing at
+      # https://account.kalitsune.net or Element X cannot find the auth
+      # service. See ./README.md.
+      enabled: false

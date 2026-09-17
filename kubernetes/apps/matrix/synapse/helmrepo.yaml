@@ -1,8 +1,15 @@
 apiVersion: source.toolkit.fluxcd.io/v1
 kind: HelmRepository
 metadata:
-  name: synapse
+  name: ess
   namespace: flux-system
 spec:
   interval: 30m
-  url: https://element-hq.github.io/synapse-charts
+  type: oci
+  # Element Server Suite Community. This replaced the standalone Synapse chart
+  # that used to live at https://element-hq.github.io/synapse-charts — that
+  # repository is GONE (index.yaml returns 404), which is why a HelmRelease
+  # pointing at it fails with "no artifact available for HelmRepository".
+  # ESS is the only chart Element maintains for Synapse now, and it ships the
+  # Matrix Authentication Service (MAS) in the same release.
+  url: oci://ghcr.io/element-hq/ess-helm
