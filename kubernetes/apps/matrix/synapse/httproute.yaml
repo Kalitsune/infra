@@ -11,22 +11,17 @@ spec:
     - matrix.kalitsune.net
   rules:
     - matches:
-        - path: { type: Exact, value: / }
-      filters:
-        - type: RequestRedirect
-          requestRedirect:
-            statusCode: 302
-            hostname: app.element.io
-            path:
-              type: ReplaceFullPath
-              replaceFullPath: /
+        - path: {type: Exact, value: /}
+      backendRefs:
+        - name: matrix-homepage
+          port: 8080
     - matches:
-        - path: { type: Exact, value: /_matrix/client/v3/login }
-        - path: { type: Exact, value: /_matrix/client/v3/refresh }
-        - path: { type: Exact, value: /_matrix/client/v3/logout }
-        - path: { type: Exact, value: /_matrix/client/v1/login }
-        - path: { type: Exact, value: /_matrix/client/r0/login }
-        - path: { type: Exact, value: /_matrix/client/unstable/login }
+        - path: {type: Exact, value: /_matrix/client/v3/login}
+        - path: {type: Exact, value: /_matrix/client/v3/refresh}
+        - path: {type: Exact, value: /_matrix/client/v3/logout}
+        - path: {type: Exact, value: /_matrix/client/v1/login}
+        - path: {type: Exact, value: /_matrix/client/r0/login}
+        - path: {type: Exact, value: /_matrix/client/unstable/login}
       timeouts:
         backendRequest: 180s
         request: 180s
@@ -34,8 +29,8 @@ spec:
         - name: synapse-matrix-authentication-service
           port: 8080
     - matches:
-        - path: { type: PathPrefix, value: /_matrix }
-        - path: { type: PathPrefix, value: /_synapse }
+        - path: {type: PathPrefix, value: /_matrix}
+        - path: {type: PathPrefix, value: /_synapse}
       timeouts:
         backendRequest: 180s
         request: 180s

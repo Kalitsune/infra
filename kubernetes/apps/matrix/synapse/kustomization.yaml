@@ -7,3 +7,4 @@ resources:
   - httproute.yaml
   - oidc-secret.yaml
   - hookshot-secret.yaml
+  - homepage.yaml
