@@ -85,11 +85,19 @@ spec:
             - name: html
               mountPath: /etc/nginx/conf.d/default.conf
               subPath: default.conf
+            - name: tmp
+              mountPath: /var/lib/nginx/tmp
+            - name: run
+              mountPath: /run
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
       volumes:
+        - name: tmp
+          emptyDir: {}
+        - name: run
+          emptyDir: {}
         - name: html
           configMap:
             name: matrix-homepage
