@@ -14,7 +14,7 @@ spec:
     # Creates the matrix namespace, and is the homeserver this appservice
     # bridges to. Hookshot's startup probe cannot pass until continuwuity
     # answers getWhoAmI(), so ordering here avoids a pointless crash window.
-    - name: continuwuity
+    - name: synapse
   decryption:
     provider: sops
     secretRef:

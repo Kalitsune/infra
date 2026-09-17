@@ -15,7 +15,7 @@ spec:
     # Draupnir's startup calls /account/whoami and then resolves the
     # management room; both fail hard (process exit, not safe mode) if the
     # homeserver is not answering, so ordering here avoids a crash window.
-    - name: continuwuity
+    - name: synapse
   decryption:
     provider: sops
     secretRef:
