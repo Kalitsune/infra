@@ -156,8 +156,26 @@ data:
 
   # ------------------------------------------------------------- federation
   CONTINUWUITY_ALLOW_FEDERATION: "true"
-  CONTINUWUITY_ALLOWED_REMOTE_SERVER_NAMES: '["thorondor.fr"]'
   CONTINUWUITY_ALLOW_ENCRYPTION: "true"
+
+  # Federation is open to every server. There is deliberately no
+  # `allowed_remote_server_names` here, and adding one back would do nothing
+  # on its own: upstream gates the allowlist on the blocklist. From
+  # src/service/moderation.rs (v26.8.1):
+  #
+  #     if allowed_remote_server_names.is_match(host) { return false }
+  #     forbidden_remote_server_names.is_match(host)
+  #
+  # With `forbidden_remote_server_names` unset the final line is always false,
+  # so nothing is ever forbidden and the allowlist is never consulted — the
+  # config option's own doc says "no effect if forbidden_remote_server_names
+  # is empty". An allowlist alone therefore reads as a restriction while
+  # enforcing nothing, which is the worst of both.
+  #
+  # To actually restrict federation you need BOTH, blocklist first:
+  #   CONTINUWUITY_FORBIDDEN_REMOTE_SERVER_NAMES: '[".*"]'
+  #   CONTINUWUITY_ALLOWED_REMOTE_SERVER_NAMES: '["good\\.tld$"]'
+  # Both are regex sets matched against the host, not exact names.
   # Notary servers used to fetch other homeservers' signing keys. matrix.org
   # is the conventional choice and makes the first join to a large room
   # dramatically faster, because keys come from one batch query instead of

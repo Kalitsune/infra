@@ -63,7 +63,11 @@ spec:
         #   Flux updated the ConfigMap, the pod kept its old environment, and
         #   /rtc/transports still returned an empty list — Element continued to
         #   report MISSING_MATRIX_RTC_TRANSPORT against a correct config.
-        kalitsune.net/config-generation: "4"
+        # generation 5: dropped a lone `allowed_remote_server_names` allowlist.
+        #   It was inert (upstream gates it on an empty blocklist), so this bump
+        #   changes no behaviour — it exists so the ConfigMap and the running
+        #   process do not silently disagree.
+        kalitsune.net/config-generation: "5"
       labels:
         app.kubernetes.io/name: continuwuity
     spec:
