@@ -159,23 +159,45 @@ data:
   CONTINUWUITY_ALLOW_ENCRYPTION: "true"
 
   # Federation is open to every server. There is deliberately no
-  # `allowed_remote_server_names` here, and adding one back would do nothing
-  # on its own: upstream gates the allowlist on the blocklist. From
-  # src/service/moderation.rs (v26.8.1):
+  # `allowed_remote_server_names` here, and adding one alone does nothing:
+  # upstream gates the allowlist on the blocklist. From
+  # src/service/moderation.rs (v26.8.1), is_remote_server_forbidden:
   #
   #     if allowed_remote_server_names.is_match(host) { return false }
   #     forbidden_remote_server_names.is_match(host)
   #
   # With `forbidden_remote_server_names` unset the final line is always false,
-  # so nothing is ever forbidden and the allowlist is never consulted — the
-  # config option's own doc says "no effect if forbidden_remote_server_names
-  # is empty". An allowlist alone therefore reads as a restriction while
-  # enforcing nothing, which is the worst of both.
+  # so nothing is forbidden and the allowlist is never consulted — the option's
+  # own doc says "no effect if forbidden_remote_server_names is empty".
   #
   # To actually restrict federation you need BOTH, blocklist first:
   #   CONTINUWUITY_FORBIDDEN_REMOTE_SERVER_NAMES: '[".*"]'
   #   CONTINUWUITY_ALLOWED_REMOTE_SERVER_NAMES: '["good\\.tld$"]'
   # Both are regex sets matched against the host, not exact names.
+  #
+  # An allowlist naming one server was removed from here while chasing
+  # one-way federation loss to that exact server. It was NOT the cause, and
+  # config is not where that class of bug lives. One line after the forbidden
+  # check, src/service/federation/execute.rs calls:
+  #
+  #     self.ensure_remote_is_healthy(dest)?;
+  #
+  # That is an in-memory dead-server cache (src/service/federation/mod.rs).
+  # Once a remote is marked unhealthy, outbound requests fail immediately with
+  # a retry_after, before any network I/O. It is process state, not config, so
+  # it outlives ConfigMap edits. It expires on its own after the backoff
+  # (base × retries, capped at sender_retry_backoff_limit, default 604800s =
+  # 7 days) or immediately on restart. Inbound requests never consult it,
+  # which is why the remote could still reach us while we could not reach
+  # them. Symptoms: federation works everywhere except one server, that
+  # server is reachable with curl from any pod, and its /_matrix/key/v2/server
+  # returns 200. Restart the pod, or wait it out; do not add config.
+  #
+  # Note when testing: /_matrix/client/v3/publicRooms?server=X is a bad probe.
+  # Synapse returns 403 "Federation denied with <us>" whenever its own
+  # allow_public_rooms_over_federation is false (the default), which is
+  # indistinguishable from a real block. Use a profile lookup of a real remote
+  # user instead.
   # Notary servers used to fetch other homeservers' signing keys. matrix.org
   # is the conventional choice and makes the first join to a large room
   # dramatically faster, because keys come from one batch query instead of
