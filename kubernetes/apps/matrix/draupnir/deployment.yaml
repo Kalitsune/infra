@@ -37,7 +37,7 @@ spec:
       enableServiceLinks: false
       securityContext:
         # The image ships no USER and would run as root. It does not need to:
-        # verified by running v3.1.0 as uid 10000 with a read-only root
+        # verified by running main as uid 10000 with a read-only root
         # filesystem — config parsed, all four SQLite stores created and
         # migrated, healthz bound, and the client reached
         # /_matrix/client/v3/account/whoami.
@@ -54,9 +54,9 @@ spec:
           type: RuntimeDefault
       containers:
         - name: draupnir
-          # v3.1.0, current stable (2026-05-07).
+          # main, current stable (2026-05-07).
           # index digest sha256:d164288b426e55db56d5c7784b6aaafcf7f1613a6fc08c33245e6459406d0ac2
-          image: ghcr.io/the-draupnir-project/draupnir:v3.1.0
+          image: ghcr.io/the-draupnir-project/draupnir:main
           # ENTRYPOINT is draupnir-entrypoint.sh and CMD is ["bot"]; the first
           # argument selects bot vs appservice mode, so `bot` must be repeated
           # here or the flags below would be taken as the mode.
