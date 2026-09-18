@@ -67,4 +67,4 @@ spec:
         - secret: hookshot-secrets
           secretKey: registration.yml
     matrixAuthenticationService:
-      enabled: false
+      enabled: true
