@@ -66,3 +66,5 @@ spec:
       appservices:
         - secret: hookshot-secrets
           secretKey: registration.yml
+    matrixAuthenticationService:
+      enabled: false
