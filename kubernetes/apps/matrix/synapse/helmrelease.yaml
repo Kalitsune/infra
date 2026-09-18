@@ -39,7 +39,7 @@ spec:
     # rendered rather than fought with, because `ingress.host` is *required*
     # by the chart's own validation for every enabled component and is also
     # what populates public_baseurl / MAS's http.public_base.
-    # ingress:
+    ingress:
       tlsEnabled: false
     elementAdmin:
       enabled: false
@@ -51,7 +51,7 @@ spec:
       storage:
         storageClassName: local-path
     synapse:
-      # ingress:
+      ingress:
         host: matrix.kalitsune.net
       media:
         storage:
@@ -66,15 +66,15 @@ spec:
       appservices:
         - secret: hookshot-secrets
           secretKey: registration.yml
-    # matrixAuthenticationService:
+    matrixAuthenticationService:
       # MAS is the Matrix 2.0 auth layer (MSC3861). Synapse delegates
       # /login, /logout and /refresh to it entirely — see the login paths in
       # ../synapse/httproute.yaml that point at the MAS Service, not Synapse.
       # It is also what makes OIDC work for Element X, which will not speak
       # Synapse's legacy SSO flow at all.
-      # ingress:
-        # host: auth.matrix.kalitsune.net
-      # additional:
-        # upstream-oidc:
-          # configSecret: mas-upstream-oidc
+      ingress:
+        host: auth.matrix.kalitsune.net
+      additional:
+        upstream-oidc:
+          configSecret: mas-upstream-oidc
           configSecretKey: config.yaml
