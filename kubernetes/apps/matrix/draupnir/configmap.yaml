@@ -78,11 +78,9 @@ data:
     # including ones it was invited to for an unrelated reason.
     protectAllJoinedRooms: false
 
-    # Abuse reports stay off. Polling needs Synapse's
-    # `/_synapse/admin/v1/event_reports`, which continuwuity does not
-    # implement, and the intercepting path needs a reverse proxy rewriting
-    # the client report endpoint. Reports land in the admin room instead.
-    pollReports: false
+    # Abuse reports. Polling needs Synapse's `/_synapse/admin/v1/event_reports`.
+    # The bot must be a server admin in Synapse for this to work.
+    pollReports: true
 
     # `web` is off, so there is no listener, no Service and no HTTPRoute.
     #
