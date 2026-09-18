@@ -44,7 +44,7 @@ spec:
         # the old values and the deploy looks applied when it is not. This
         # annotation is part of the pod template, so bumping it is what
         # actually applies a config edit.
-        kalitsune.net/config-generation: "1"
+        kalitsune.net/config-generation: "1789739470"
       labels:
         app.kubernetes.io/name: hookshot
     spec:
@@ -66,6 +66,29 @@ spec:
         fsGroup: 10000
         seccompProfile:
           type: RuntimeDefault
+      # ponytail: InitContainer sed patches node_modules/matrix-bot-sdk -> skipped: waiting for hookshot 7.4.5 upstream, add when released to remove this workaround.
+      initContainers:
+        - name: patch-bot-sdk
+          image: ghcr.io/matrix-org/matrix-hookshot:7.4.4
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              cp /usr/bin/matrix-hookshot/node_modules/.pnpm/@vector-im+matrix-bot-sdk@0.8.0-element.3/node_modules/@vector-im/matrix-bot-sdk/lib/MatrixClient.js /patch/MatrixClient.js
+              sed -i 's/qs = { "org.matrix.msc3202.device_id": this.impersonatedDeviceId };/qs = { "device_id": this.impersonatedDeviceId, "org.matrix.msc3202.device_id": this.impersonatedDeviceId };/g' /patch/MatrixClient.js
+              sed -i 's/qs\["org.matrix.msc3202.device_id"\] = this.impersonatedDeviceId;/qs["device_id"] = this.impersonatedDeviceId; qs["org.matrix.msc3202.device_id"] = this.impersonatedDeviceId;/g' /patch/MatrixClient.js
+          securityContext:
+            runAsUser: 10000
+            runAsGroup: 10000
+            runAsNonRoot: true
+            seccompProfile:
+              type: RuntimeDefault
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: patch
+              mountPath: /patch
       containers:
         - name: hookshot
           # 7.4.4, current stable. Includes the fix for GHSA-5c49-6fvm-2xvc
@@ -136,7 +159,13 @@ spec:
             - name: secrets
               mountPath: /secrets
               readOnly: true
+            - name: patch
+              mountPath: /usr/bin/matrix-hookshot/node_modules/.pnpm/@vector-im+matrix-bot-sdk@0.8.0-element.3/node_modules/@vector-im/matrix-bot-sdk/lib/MatrixClient.js
+              subPath: MatrixClient.js
+              readOnly: true
       volumes:
+        - name: patch
+          emptyDir: {}
         - name: data
           persistentVolumeClaim:
             claimName: hookshot-data

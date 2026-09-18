@@ -43,8 +43,8 @@ data:
     cache:
       redisUri: redis://hookshot-redis:6379
 
-    # encryption:
-      # storagePath: /data/cryptostore
+    encryption:
+      storagePath: /data/cryptostore
 
     listeners:
       # Inbound webhook traffic. Separate from the appservice port above so
