@@ -1,0 +1,8 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: hookshot
+  namespace: matrix
+spec:
+  type: ExternalName
+  externalName: synapse-hookshot.matrix.svc.cluster.local

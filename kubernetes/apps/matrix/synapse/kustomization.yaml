@@ -10,3 +10,4 @@ resources:
   - homepage.yaml
   - httproute-livekit.yaml
   - httproute-hookshot.yaml
+  - hookshot-legacy-svc.yaml
