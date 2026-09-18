@@ -46,7 +46,25 @@ spec:
     elementWeb:
       enabled: false
     matrixRTC:
-      enabled: false
+      enabled: true
+      ingress:
+        host: livekit.kalitsune.net
+      sfu:
+        hostNetwork: true
+        nodeSelector:
+          kubernetes.io/hostname: talos-192-168-1-171
+        exposedServices:
+          rtcTcp:
+            portType: HostPort
+            port: 7881
+          rtcMuxedUdp:
+            enabled: false
+          rtcUdp:
+            enabled: true
+            portType: HostPort
+            portRange:
+              startPort: 50100
+              endPort: 50200
     postgres:
       storage:
         storageClassName: local-path

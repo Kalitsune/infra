@@ -8,3 +8,4 @@ resources:
   - oidc-secret.yaml
   - hookshot-secret.yaml
   - homepage.yaml
+  - httproute-livekit.yaml
