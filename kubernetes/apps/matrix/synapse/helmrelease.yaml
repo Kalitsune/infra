@@ -74,3 +74,10 @@ spec:
         upstream-oidc:
           configSecret: mas-upstream-oidc
           configSecretKey: config.yaml
+        auth.yaml:
+          passwords:
+            enabled: false
+          account:
+            email_change_allowed: false
+
+
