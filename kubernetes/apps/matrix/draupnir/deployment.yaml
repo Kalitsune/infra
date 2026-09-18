@@ -27,7 +27,7 @@ spec:
         # the same way, once, from --access-token-path. This annotation is
         # part of the pod template, so bumping it is what actually applies an
         # edit to either file.
-        kalitsune.net/config-generation: "1"
+        kalitsune.net/config-generation: "2"
       labels:
         app.kubernetes.io/name: draupnir
     spec:

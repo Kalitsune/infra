@@ -48,7 +48,7 @@ data:
     #   - the access token must be CLEAN, i.e. from a device that has never
     #     done E2EE. `!admin users issue-token` mints a fresh device, so that
     #     holds; a token lifted out of an Element session does not.
-    experimentalRustCrypto: true
+    experimentalRustCrypto: false
 
     # The room where commands are issued. Anyone in it controls the bot, and
     # Draupnir has no finer access control than room membership.
@@ -62,7 +62,7 @@ data:
     # Mutually exclusive with `initialManager` (the v3.1.0 Zero Touch flow):
     # setting both throws at config read. Zero Touch is not usable here
     # because the room it creates for you is unencrypted.
-    managementRoom: "#draupnir:kalitsune.net"
+    managementRoom: "#draupnir-mgmt:kalitsune.net"
 
     # Draupnir stores each protection's settings as state events in the
     # management room, so it needs power level 50 there. Without it, settings
