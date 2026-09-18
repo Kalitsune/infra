@@ -65,5 +65,7 @@ spec:
       # Synapse's legacy SSO flow at all.
       ingress:
         host: auth.matrix.kalitsune.net
-      configSecret: mas-upstream-oidc
       additional:
+        upstream-oidc:
+          configSecret: mas-upstream-oidc
+          configSecretKey: config.yaml
