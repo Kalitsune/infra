@@ -6,6 +6,7 @@ resources:
   - helmrelease.yaml
   - httproute.yaml
   - oidc-secret.yaml
+  - mas-policy-secret.yaml
   - hookshot-secret.yaml
   - homepage.yaml
   - httproute-livekit.yaml

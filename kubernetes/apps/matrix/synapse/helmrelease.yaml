@@ -91,19 +91,9 @@ spec:
         upstream-oidc:
           configSecret: mas-upstream-oidc
           configSecretKey: config.yaml
-        auth.yaml:
-          config: |
-            passwords:
-              enabled: false
-            account:
-              email_change_allowed: false
-            policy:
-              data:
-                admin_users:
-                  - maple
-                  - "@maple:kalitsune.net"
-                  - draupnir
-                  - "@draupnir:kalitsune.net"
+        mas-policy:
+          configSecret: mas-policy
+          configSecretKey: config.yaml
     hookshot:
       enabled: true
       appserviceRegistration:
