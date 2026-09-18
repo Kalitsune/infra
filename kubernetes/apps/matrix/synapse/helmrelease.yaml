@@ -42,7 +42,9 @@ spec:
     ingress:
       tlsEnabled: false
     elementAdmin:
-      enabled: false
+      enabled: true
+      ingress:
+        host: admin.matrix.kalitsune.net
     elementWeb:
       enabled: false
     matrixRTC:
