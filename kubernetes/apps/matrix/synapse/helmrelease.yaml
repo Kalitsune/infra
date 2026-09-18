@@ -68,3 +68,9 @@ spec:
           secretKey: registration.yml
     matrixAuthenticationService:
       enabled: true
+      ingress:
+        host: auth.matrix.kalitsune.net
+      additional:
+        upstream-oidc:
+          configSecret: mas-upstream-oidc
+          configSecretKey: config.yaml
