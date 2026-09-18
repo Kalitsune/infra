@@ -97,6 +97,10 @@ spec:
               enabled: false
             account:
               email_change_allowed: false
+            policy:
+              data:
+                admin_users:
+                  - maple
     hookshot:
       enabled: true
       appserviceRegistration:
