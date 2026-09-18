@@ -47,6 +47,9 @@ spec:
       enabled: false
     matrixRTC:
       enabled: false
+    postgres:
+      storage:
+        storageClassName: local-path
     synapse:
       ingress:
         host: matrix.kalitsune.net
