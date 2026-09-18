@@ -101,6 +101,9 @@ spec:
               data:
                 admin_users:
                   - maple
+                  - "@maple:kalitsune.net"
+                  - draupnir
+                  - "@draupnir:kalitsune.net"
     hookshot:
       enabled: true
       appserviceRegistration:
