@@ -84,6 +84,9 @@ spec:
       appservices:
         - secret: hookshot-secrets
           secretKey: registration.yml
+      startupProbe:
+        periodSeconds: 5
+        failureThreshold: 60
     matrixAuthenticationService:
       enabled: true
       ingress:
@@ -122,3 +125,6 @@ spec:
               waitForComplete: false
               enableHttpGet: false
               outbound: false
+      startupProbe:
+        periodSeconds: 5
+        failureThreshold: 60
