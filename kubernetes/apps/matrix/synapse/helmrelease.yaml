@@ -66,15 +66,3 @@ spec:
       appservices:
         - secret: hookshot-secrets
           secretKey: registration.yml
-    matrixAuthenticationService:
-      # MAS is the Matrix 2.0 auth layer (MSC3861). Synapse delegates
-      # /login, /logout and /refresh to it entirely — see the login paths in
-      # ../synapse/httproute.yaml that point at the MAS Service, not Synapse.
-      # It is also what makes OIDC work for Element X, which will not speak
-      # Synapse's legacy SSO flow at all.
-      ingress:
-        host: auth.matrix.kalitsune.net
-      additional:
-        upstream-oidc:
-          configSecret: mas-upstream-oidc
-          configSecretKey: config.yaml
