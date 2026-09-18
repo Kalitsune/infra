@@ -78,12 +78,6 @@ spec:
           # fsync/locking semantics to lose, so NFS is correct here and
           # survives the pod moving nodes. The databases below do NOT go here.
           storageClassName: truenas-nfs
-      # Hookshot's appservice registration lives in the bridge's own SOPS
-      # secret in ../hookshot. Synapse must be told to load it or the bridge
-      # cannot authenticate its transactions.
-      appservices:
-        - secret: hookshot-secrets
-          secretKey: registration.yml
       startupProbe:
         periodSeconds: 5
         failureThreshold: 60
