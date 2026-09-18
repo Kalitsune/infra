@@ -109,12 +109,11 @@ spec:
       additional:
         0-main:
           config: |
-            bridge:
-              domain: kalitsune.net
-              url: http://synapse-synapse.matrix.svc.cluster.local:8008
-              mediaUrl: https://matrix.kalitsune.net
-              port: 9993
-              bindAddress: 0.0.0.0
+            permissions:
+              - actor: '@maple:kalitsune.net'
+                services:
+                  - service: '*'
+                    level: admin
             generic:
               enabled: true
               urlPrefix: https://webhooks.lab.kalitsune.net/webhook/
@@ -123,17 +122,3 @@ spec:
               waitForComplete: false
               enableHttpGet: false
               outbound: false
-            listeners:
-              - port: 9000
-                bindAddress: 0.0.0.0
-                resources:
-                  - webhooks
-            permissions:
-              - actor: '@maple:kalitsune.net'
-                services:
-                  - service: '*'
-                    level: admin
-            logging:
-              level: info
-              colorize: false
-              json: false
