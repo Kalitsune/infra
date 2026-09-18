@@ -41,6 +41,12 @@ spec:
     # what populates public_baseurl / MAS's http.public_base.
     ingress:
       tlsEnabled: false
+    elementAdmin:
+      enabled: false
+    elementWeb:
+      enabled: false
+    matrixRTC:
+      enabled: false
     synapse:
       ingress:
         host: matrix.kalitsune.net
