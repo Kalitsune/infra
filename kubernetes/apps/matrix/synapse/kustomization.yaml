@@ -9,3 +9,4 @@ resources:
   - hookshot-secret.yaml
   - homepage.yaml
   - httproute-livekit.yaml
+  - httproute-hookshot.yaml

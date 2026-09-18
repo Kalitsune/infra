@@ -93,9 +93,47 @@ spec:
           configSecret: mas-upstream-oidc
           configSecretKey: config.yaml
         auth.yaml:
-          passwords:
-            enabled: false
-          account:
-            email_change_allowed: false
-
-
+          config: |
+            passwords:
+              enabled: false
+            account:
+              email_change_allowed: false
+    hookshot:
+      enabled: true
+      appserviceRegistration:
+        secret: hookshot-secrets
+        secretKey: registration.yml
+      passkey:
+        secret: hookshot-secrets
+        secretKey: passkey.pem
+      additional:
+        0-main:
+          config: |
+            bridge:
+              domain: kalitsune.net
+              url: http://synapse-synapse.matrix.svc.cluster.local:8008
+              mediaUrl: https://matrix.kalitsune.net
+              port: 9993
+              bindAddress: 0.0.0.0
+            generic:
+              enabled: true
+              urlPrefix: https://webhooks.lab.kalitsune.net/webhook/
+              userIdPrefix: _webhook_
+              allowJsTransformationFunctions: false
+              waitForComplete: false
+              enableHttpGet: false
+              outbound: false
+            listeners:
+              - port: 9000
+                bindAddress: 0.0.0.0
+                resources:
+                  - webhooks
+            permissions:
+              - actor: '@maple:kalitsune.net'
+                services:
+                  - service: '*'
+                    level: admin
+            logging:
+              level: info
+              colorize: false
+              json: false
