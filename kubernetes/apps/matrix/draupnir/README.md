@@ -142,13 +142,19 @@ looks alive. The shim ships a self-check for exactly that; run it against the
 running pod:
 
 ```
-kubectl exec -n matrix deploy/draupnir -- node /shim/getEvent-shim.js
+kubectl exec -n matrix deploy/draupnir -- sh -c 'NODE_OPTIONS= node /shim/getEvent-shim.js'
 ```
 
 It asserts both event shapes survive `extractRawRoomEvent`, *and* that the
-unshimmed encrypted shape still throws. When that last assertion starts
-failing, upstream has fixed the bug: delete `shim-configmap.yaml`, the
-`NODE_OPTIONS` env var, the `/shim` mount and this section.
+unshimmed encrypted shape still throws. Note the `NODE_OPTIONS=` reset: the
+pod already preloads this exact file, so without clearing it node finds the
+module cached, never evaluates it as the main module, and the self-check
+exits 0 having printed nothing — a pass and a no-op look identical. Three
+`ok` lines is a pass.
+
+When the last assertion starts failing, upstream has fixed the bug: delete
+`shim-configmap.yaml`, the `NODE_OPTIONS` env var, the `/shim` mount and this
+section.
 
 ### `managementRoom` is an alias, and Zero Touch is not used
 

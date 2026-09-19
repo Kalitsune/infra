@@ -97,7 +97,13 @@ data:
     installShim();
 
     // Self-check. Run it with:
-    //   kubectl exec -n matrix deploy/draupnir -- node /shim/getEvent-shim.js
+    //   kubectl exec -n matrix deploy/draupnir -- sh -c 'NODE_OPTIONS= node /shim/getEvent-shim.js'
+    //
+    // The NODE_OPTIONS reset matters: the pod preloads this same file, so
+    // without clearing it node serves the cached module, never evaluates this
+    // block, and the check exits 0 printing nothing — a pass and a silent
+    // no-op look identical. Three `ok` lines is a pass.
+    //
     // It exercises both shapes getEvent can return against the REAL
     // extractRawRoomEvent from the image, so it fails loudly if either side
     // changes under us.
