@@ -156,6 +156,66 @@ When the last assertion starts failing, upstream has fixed the bug: delete
 `shim-configmap.yaml`, the `NODE_OPTIONS` env var, the `/shim` mount and this
 section.
 
+### Cross-signing is published by a second shim
+
+Draupnir never creates a cross-signing identity — upstream's encryption page
+says as much, and it is the reason `@draupnir` shows up in Element as an
+unverified device with a red shield, in the one room whose whole point is
+moderation. There is no config flag for it, and neither Draupnir nor
+matrix-bot-sdk calls the API; the capability only exists one layer down, in
+`@matrix-org/matrix-sdk-crypto-nodejs`, which already ships in the image.
+
+So `cross-signing-shim.js` wraps `CryptoClient.prepare()` and makes the two
+calls upstream skips, once the `OlmMachine` exists:
+
+```
+POST /_matrix/client/v3/keys/device_signing/upload   master/self/user keys
+POST /_matrix/client/v3/keys/signatures/upload       self-signature over this device
+```
+
+**What that buys, exactly:** the bot gains one *stable* identity and its device
+is signed by it, so clients stop warning per-device and can tell this is the
+same `@draupnir` as before. It does **not** make anyone trust that identity for
+you — user-to-user verification is an interactive SAS/QR flow, and these
+bindings ship no verification API at all (no `Sas`/`VerificationRequest`
+symbols in `index.d.ts`). Nobody can emoji-verify a bot. Verify `@draupnir`
+once from Element the way you would a second device of a person; the identity
+above is what you are signing.
+
+Safe to run on every boot: `bootstrapCrossSigning(false)` reuses the stored
+identity rather than minting a new one (`true` would reset it and invalidate
+every existing signature), and Synapse short-circuits an identical re-upload
+with `200 {}` before any UIA check.
+
+The first upload needs no interactive auth — MSC3967 allows initial setup
+without UIA, and Synapse only demands it when cross-signing is *already* set up
+server-side. That distinction matters here because under MAS, UIA is
+impossible: Synapse answers `401` with an `m.oauth` flow pointing at the MAS
+account page instead. Which is precisely the state after **losing the PVC** —
+empty local store, fresh master key, server still holding the old one, upload
+refused. The shim logs and continues in that case (encryption keeps working,
+only cross-signing is missing); recovery is approving the reset at
+<https://auth.matrix.kalitsune.net/account> (`action=org.matrix.cross_signing_reset`),
+then restarting the pod.
+
+Same self-check convention, four `ok` lines and exit 0:
+
+```
+kubectl exec -n matrix deploy/draupnir -- sh -c 'NODE_OPTIONS= node /shim/cross-signing-shim.js'
+```
+
+It drives a real `OlmMachine` over a throwaway store — no homeserver touched —
+and pins the two things that would silently break trust: that
+`signatures/upload` is keyed `{user_id: {device_id: ...}}` at the top level
+rather than wrapped in the binding's `signed_keys`, and that reopening the
+store reuses the same master key. It ends with an explicit `process.exit()`
+because the napi binding panics tearing down its tokio runtime at natural exit
+(`called Option::unwrap() on a None value`, exit 134) *after* the assertions
+pass; only the self-check hits that path, never the long-lived bot.
+
+Unlike the other shim this one is not load-bearing: remove it and the bot keeps
+working, it just goes back to showing as unverified.
+
 ### `managementRoom` is an alias, and Zero Touch is not used
 
 v3.1.0 added "Zero Touch Deployment": set `initialManager` instead of

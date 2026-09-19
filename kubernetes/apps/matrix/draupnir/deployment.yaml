@@ -75,19 +75,26 @@ spec:
             - --access-token-path
             - /secrets/access_token
           env:
-            # Preload the getEvent shim before Draupnir's own code runs, so
-            # reaction-confirmed commands work in the encrypted management
-            # room. See shim-configmap.yaml for the full reasoning and the
-            # self-check command. Without this, E2EE prompts silently do
+            # Preload both shims before Draupnir's own code runs. See
+            # shim-configmap.yaml for the full reasoning and the self-check
+            # commands.
+            #
+            # getEvent-shim: makes reaction-confirmed commands work in the
+            # encrypted management room. Without it, E2EE prompts silently do
             # nothing (upstream #1104) — the pair is load-bearing, so
-            # experimentalRustCrypto and this var move together.
+            # experimentalRustCrypto and this shim move together.
+            #
+            # cross-signing-shim: publishes a cross-signing identity and
+            # self-signs the bot's device, which Draupnir never does. Dropping
+            # it is only cosmetic-ish (the bot goes back to showing as an
+            # unverified device); dropping the other one breaks commands.
             #
             # NODE_OPTIONS and not a wrapper script: the image's entrypoint
             # execs `node --enable-source-maps .../index.js`, which node
             # merges NODE_OPTIONS into, and the root filesystem is read-only
             # so there is nowhere to drop a wrapper anyway.
             - name: NODE_OPTIONS
-              value: --require /shim/getEvent-shim.js
+              value: --require /shim/getEvent-shim.js --require /shim/cross-signing-shim.js
           ports:
             # healthz only. There is no Service and no HTTPRoute: the kubelet
             # probes the pod IP directly, and nothing else should be able to

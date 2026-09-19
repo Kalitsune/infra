@@ -157,3 +157,261 @@ data:
         process.exit(1);
       });
     }
+  # Why THIS file exists
+  # ====================
+  #
+  # Draupnir never creates a cross-signing identity, so `@draupnir` shows up in
+  # Element as an unverified device with a red shield, in a room whose whole
+  # point is moderation. Upstream says so itself on the encryption page: it
+  # "does not enforce cross-signing". There is no config flag for this and
+  # neither Draupnir nor matrix-bot-sdk calls the API — the capability is only
+  # in the layer underneath both, @matrix-org/matrix-sdk-crypto-nodejs, which
+  # already ships in the image and exposes OlmMachine.bootstrapCrossSigning().
+  #
+  # So this shim does the two calls upstream skips, right after the crypto
+  # client finishes preparing (the first moment the OlmMachine exists):
+  #
+  #   POST /_matrix/client/v3/keys/device_signing/upload  <- master/self/user keys
+  #   POST /_matrix/client/v3/keys/signatures/upload      <- self-signature over
+  #                                                          this device
+  #
+  # What that buys, precisely: the bot gains ONE stable identity, and its
+  # device is signed by it, so a client can tell "this is the same @draupnir as
+  # before" and stops showing per-device warnings. It does NOT make other users
+  # trust that identity — user-to-user verification is an interactive SAS/QR
+  # flow, and these bindings ship no verification API at all (verified: no
+  # Sas/VerificationRequest symbols in index.d.ts). Nobody can emoji-verify a
+  # bot. Verify @draupnir once from Element, as you would a second device of a
+  # person, and the identity below is what you are signing.
+  #
+  # Idempotent by construction, so it can run on every boot:
+  #   - bootstrapCrossSigning(false) REUSES the stored identity rather than
+  #     making a new one (verified: same master ed25519 across two opens of the
+  #     same store) — `true` would reset it and break every existing trust.
+  #   - Synapse short-circuits an identical re-upload with 200 {} before any
+  #     UIA check (rest/client/keys.py, `has_different_keys`).
+  #
+  # First upload needs no interactive auth: MSC3967 allows initial setup
+  # without UIA, and Synapse only demands it when cross-signing is ALREADY set
+  # up server-side. That matters because under MAS, UIA is impossible — Synapse
+  # instead answers 401 with an `m.oauth` flow pointing at the MAS account page.
+  # Which is exactly the state after a lost PVC: local store is empty, a fresh
+  # master key is generated, the server still holds the old one, and the upload
+  # is refused. That path logs and continues (encryption keeps working, only
+  # cross-signing is missing); recovery is the operator approving the reset at
+  # https://auth.matrix.kalitsune.net/account (action=org.matrix.cross_signing_reset).
+  #
+  # Delete this file when Draupnir grows real cross-signing support.
+  cross-signing-shim.js: |
+    // SPDX-License-Identifier: Apache-2.0
+    //
+    // Give @draupnir a cross-signing identity and self-sign its own device —
+    // the one thing standing between the bot and a green shield. Loaded with
+    // `node --require`, patching CryptoClient.prepare() so it runs once the
+    // OlmMachine is up and the access token is known good.
+    "use strict";
+
+    const sdk = require("@vector-im/matrix-bot-sdk");
+    const { CryptoClient, LogService } = sdk;
+
+    const LOG = "draupnir-cross-signing-shim";
+
+    // The rust binding hands back {"signed_keys": {...}} while the endpoint
+    // wants that inner map at the top level. Tolerate both shapes: if the
+    // binding is ever fixed to match the spec, this keeps working.
+    function signatureBody(request) {
+      const parsed = JSON.parse(request.body);
+      return parsed.signed_keys ?? parsed;
+    }
+
+    async function publishCrossSigningIdentity(client, machine) {
+      // reset=false: reuse the identity already in the crypto store. Passing
+      // true here would mint a new one on every pod restart and invalidate
+      // every signature anyone ever made over this bot.
+      const boot = await machine.bootstrapCrossSigning(false);
+
+      await client.doRequest(
+        "POST",
+        "/_matrix/client/v3/keys/device_signing/upload",
+        null,
+        JSON.parse(boot.uploadSigningKeysReq)
+      );
+
+      const response = await client.doRequest(
+        "POST",
+        "/_matrix/client/v3/keys/signatures/upload",
+        null,
+        signatureBody(boot.uploadSignaturesReq)
+      );
+
+      // The endpoint reports per-key problems in the body with a 200, so a
+      // bare status check would call a silent failure a success.
+      const failures = response?.failures ?? {};
+      if (Object.keys(failures).length > 0) {
+        throw new Error(
+          `signature upload reported failures: ${JSON.stringify(failures)}`
+        );
+      }
+      return (await machine.crossSigningStatus()) ?? null;
+    }
+
+    function installShim(target = CryptoClient) {
+      const original = target.prototype.prepare;
+      if (typeof original !== "function") {
+        throw new TypeError(
+          `${LOG}: CryptoClient.prototype.prepare is missing — the bot-sdk ` +
+            "API changed, re-check whether this shim is still needed."
+        );
+      }
+      if (original.__draupnirCrossSigningShim) {
+        return original;
+      }
+      async function prepare(...args) {
+        const result = await original.apply(this, args);
+        try {
+          const machine = this.engine?.machine;
+          if (!machine) {
+            throw new Error("CryptoClient.engine.machine is not reachable");
+          }
+          const status = await publishCrossSigningIdentity(this.client, machine);
+          LogService.info(
+            LOG,
+            `cross-signing published for device ${this.clientDeviceId}:`,
+            `master=${status?.hasMaster} self=${status?.hasSelfSigning} user=${status?.hasUserSigning}`
+          );
+        } catch (error) {
+          // Never fatal. Cross-signing is a trust nicety; encryption and
+          // moderation both work without it, and the common failure here is
+          // the post-PVC-loss case described in the ConfigMap comment, which
+          // only an operator can clear.
+          LogService.warn(
+            LOG,
+            "could not publish cross-signing identity; the bot stays usable " +
+              "but will show as unverified:",
+            error?.message ?? error
+          );
+        }
+        return result;
+      }
+      prepare.__draupnirCrossSigningShim = true;
+      target.prototype.prepare = prepare;
+      return original;
+    }
+
+    installShim();
+
+    // Self-check — offline, no homeserver touched. Run it with:
+    //   kubectl exec -n matrix deploy/draupnir -- sh -c 'NODE_OPTIONS= node /shim/cross-signing-shim.js'
+    //
+    // Same NODE_OPTIONS reset as the other shim, and for the same reason: the
+    // pod preloads this exact path, so without clearing it node serves the
+    // cached module and the check silently does nothing. Four `ok` lines is a
+    // pass.
+    //
+    // It drives a real OlmMachine over a throwaway store, so it fails loudly
+    // if the binding stops producing the shapes the two uploads expect.
+    //
+    // It also calls process.exit() explicitly rather than letting node fall
+    // off the end: the napi binding panics while tearing its tokio runtime
+    // down at natural exit ("called `Option::unwrap()` on a `None` value",
+    // exit 134), long after the assertions have passed. Exiting on purpose
+    // keeps a pass from reading as a crash. Only the self-check is affected —
+    // the bot is long-lived and never reaches that teardown path.
+    if (require.main === module) {
+      const assert = require("node:assert");
+      const fs = require("node:fs");
+      const os = require("node:os");
+      const path = require("node:path");
+      const {
+        OlmMachine,
+        UserId,
+        DeviceId,
+        StoreType,
+      } = require("@matrix-org/matrix-sdk-crypto-nodejs");
+
+      // SQLITE_TMPDIR is set to /data in this image and the root FS is
+      // read-only, so the scratch store has to live under it.
+      const storePath = fs.mkdtempSync(
+        path.join(process.env.SQLITE_TMPDIR || os.tmpdir(), "xsign-selfcheck-")
+      );
+      const user = "@selfcheck:kalitsune.net";
+      const device = "SELFCHECK";
+
+      (async () => {
+        const open = () =>
+          OlmMachine.initialize(
+            new UserId(user),
+            new DeviceId(device),
+            storePath,
+            "",
+            StoreType.Sqlite
+          );
+
+        const machine = await open();
+        const calls = [];
+        const client = {
+          async doRequest(method, url, qs, body) {
+            calls.push({ method, url, body });
+            return { failures: {} };
+          },
+        };
+
+        const status = await publishCrossSigningIdentity(client, machine);
+        assert.strictEqual(calls.length, 2, "both uploads must be attempted");
+
+        const [keysCall, sigCall] = calls;
+        assert.strictEqual(
+          keysCall.url,
+          "/_matrix/client/v3/keys/device_signing/upload"
+        );
+        assert.deepStrictEqual(
+          Object.keys(keysCall.body).sort(),
+          ["master_key", "self_signing_key", "user_signing_key"],
+          "device_signing/upload must carry all three public keys"
+        );
+        console.log("ok  device_signing/upload body has master/self/user keys");
+
+        assert.strictEqual(
+          sigCall.url,
+          "/_matrix/client/v3/keys/signatures/upload"
+        );
+        // Spec shape is {user_id: {device_id: signed_key}} at the TOP level —
+        // a stray `signed_keys` wrapper would be read as a user ID by Synapse.
+        assert.ok(
+          sigCall.body[user]?.[device],
+          `signatures/upload must be keyed by user then device, got ${JSON.stringify(
+            Object.keys(sigCall.body)
+          )}`
+        );
+        console.log("ok  signatures/upload signs this device, unwrapped");
+
+        assert.ok(
+          status.hasMaster && status.hasSelfSigning && status.hasUserSigning,
+          "all three private cross-signing keys must be stored locally"
+        );
+        console.log("ok  private cross-signing keys persisted to the store");
+
+        // The identity must SURVIVE a restart. If bootstrapCrossSigning(false)
+        // ever starts minting a fresh identity, every pod restart would silently
+        // reset trust — so pin that behaviour here.
+        const before = Object.keys(calls[0].body.master_key.keys);
+        calls.length = 0;
+        await publishCrossSigningIdentity(client, await open());
+        const after = Object.keys(calls[0].body.master_key.keys);
+        assert.deepStrictEqual(
+          after,
+          before,
+          "reopening the store must reuse the same master key, not reset it"
+        );
+        console.log("ok  master key is stable across store reopen");
+      })()
+        .catch((error) => {
+          console.error(error);
+          process.exitCode = 1;
+        })
+        .finally(() => {
+          fs.rmSync(storePath, { recursive: true, force: true });
+          // Deliberate: see the teardown-panic note above.
+          process.exit(process.exitCode ?? 0);
+        });
+    }
