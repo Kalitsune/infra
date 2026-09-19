@@ -1,0 +1,28 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: matrix-bridges
+  namespace: flux-system
+spec:
+  # Deliberately NOT chained to the synapse Kustomization in either direction.
+  # Synapse mounts the registration halves of these Secrets, and the bridges
+  # need a running Synapse to authenticate — so a dependsOn edge either way
+  # deadlocks a cold bootstrap (synapse owns the matrix namespace, and its
+  # wait:true would block on a pod that cannot mount a Secret that had not been
+  # applied yet). Left independent, both sides simply retry: the kubelet keeps
+  # retrying the missing mount, and the bridges crash-loop with a 401 until
+  # Synapse reloads with the registrations. Eventually consistent, no deadlock.
+  dependsOn:
+    - name: local-path-provisioner
+  interval: 30m
+  retryInterval: 1m
+  path: ./kubernetes/apps/matrix/bridges
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  timeout: 5m

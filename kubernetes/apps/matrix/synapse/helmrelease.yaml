@@ -73,6 +73,23 @@ spec:
     synapse:
       ingress:
         host: matrix.kalitsune.net
+      # Each registration is the other half of the Secret its bridge mounts as
+      # config.yaml, so the as_token/hs_token pair can never drift. Adding or
+      # removing an entry here restarts Synapse: the chart hashes the list into
+      # the pod spec and mounts each file at /as/<index>/.
+      appservices:
+        - secret: mautrix-whatsapp
+          secretKey: registration.yaml
+        - secret: mautrix-signal
+          secretKey: registration.yaml
+        - secret: mautrix-instagram
+          secretKey: registration.yaml
+        - secret: mautrix-linkedin
+          secretKey: registration.yaml
+        - secret: mautrix-discord
+          secretKey: registration.yaml
+        - secret: mautrix-discord-admin
+          secretKey: registration.yaml
       media:
         storage:
           size: 50Gi
