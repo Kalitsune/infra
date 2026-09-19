@@ -41,6 +41,11 @@ spec:
       app.kubernetes.io/name: mautrix-signal
   template:
     metadata:
+      annotations:
+        # Mounted Secrets do not roll a Deployment on their own and this
+        # cluster has no Reloader, so the config hash rides in the pod
+        # spec: change the config, change this, get a new pod.
+        checksum/config: 84dc69376a34034e
       labels:
         app.kubernetes.io/name: mautrix-signal
     spec:

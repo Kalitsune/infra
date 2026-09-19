@@ -41,6 +41,11 @@ spec:
       app.kubernetes.io/name: mautrix-instagram
   template:
     metadata:
+      annotations:
+        # Mounted Secrets do not roll a Deployment on their own and this
+        # cluster has no Reloader, so the config hash rides in the pod
+        # spec: change the config, change this, get a new pod.
+        checksum/config: 4269ccfea8a00d31
       labels:
         app.kubernetes.io/name: mautrix-instagram
     spec:

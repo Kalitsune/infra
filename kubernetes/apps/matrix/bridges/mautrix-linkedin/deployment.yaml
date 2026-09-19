@@ -41,6 +41,11 @@ spec:
       app.kubernetes.io/name: mautrix-linkedin
   template:
     metadata:
+      annotations:
+        # Mounted Secrets do not roll a Deployment on their own and this
+        # cluster has no Reloader, so the config hash rides in the pod
+        # spec: change the config, change this, get a new pod.
+        checksum/config: c33ff5b4d24b1abe
       labels:
         app.kubernetes.io/name: mautrix-linkedin
     spec:
