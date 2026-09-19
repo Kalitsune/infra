@@ -48,7 +48,11 @@ data:
     #   - the access token must be CLEAN, i.e. from a device that has never
     #     done E2EE. `!admin users issue-token` mints a fresh device, so that
     #     holds; a token lifted out of an Element session does not.
-    experimentalRustCrypto: false
+    #
+    # A third requirement is local: with E2EE on, reaction-confirmed commands
+    # are broken upstream (#1104) unless ./shim-configmap.yaml is mounted and
+    # preloaded. deployment.yaml does that; do not turn this on without it.
+    experimentalRustCrypto: true
 
     # The room where commands are issued. Anyone in it controls the bot, and
     # Draupnir has no finer access control than room membership.

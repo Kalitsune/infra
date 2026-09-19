@@ -2,6 +2,10 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - configmap.yaml
+  # The getEvent shim. Load-bearing whenever experimentalRustCrypto is true:
+  # without it, reaction-confirmed commands silently do nothing in the
+  # encrypted management room (upstream Draupnir #1104). See its own comments.
+  - shim-configmap.yaml
   # Holds only the bot's access token. Continuwuity keeps the other half of
   # that pair (the device it was issued to), so rotating means re-running
   # `!admin users issue-token draupnir` and re-encrypting here — not a

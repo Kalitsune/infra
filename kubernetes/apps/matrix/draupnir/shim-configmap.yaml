@@ -1,0 +1,153 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: draupnir-e2ee-shim
+  namespace: matrix
+data:
+  # Why this file exists
+  # ===================
+  #
+  # Draupnir v3.1.0 cannot read its own prompts in an ENCRYPTED room, which
+  # breaks every reaction-confirmed command (`watch`, `ban`, `takedown`, ...):
+  # you press OK and nothing happens. Upstream issue #1104.
+  #
+  # It is a two-line type mismatch between two upstream projects:
+  #
+  #   @vector-im/matrix-bot-sdk MatrixClient.getEvent() returns
+  #     - `new RoomEvent(raw)`  ... for a PLAINTEXT room, but
+  #     - a bare `raw` object   ... for an ENCRYPTED room, because that path
+  #       returns `processEvent(decryptRoomEvent(...).raw)` and `.raw`
+  #       unwraps it again. (lib/MatrixClient.js, `async getEvent`)
+  #
+  #   Draupnir's extractRawRoomEvent() requires the wrapper and throws
+  #   `TypeError: Something has changed upstream in vector bot sdk` when the
+  #   `event` property is missing.
+  #   (matrix-protection-suite-for-matrix-bot-sdk/src/Client/BotSDKBaseClient.ts:93)
+  #
+  # So the throw only ever fires on the encrypted branch. Verified against the
+  # exact modules in the running image, both shapes, before writing this:
+  #
+  #   decrypted-raw  (encrypted room) -> THROWS: Something has changed upstream
+  #   RoomEvent-wrapped (plaintext)   -> ok, returns raw
+  #
+  # Every caller of extractRawRoomEvent goes through MatrixClient.getEvent
+  # (MatrixReactionHandler.handleEvent, ReportManager.handleReaction,
+  # BotSDKBaseClient.getEvent/getUndecodedEvent, WebAPIs), so normalising that
+  # one method fixes all of them.
+  #
+  # This is a bridge, not a fork. Delete it when bot-sdk returns a consistent
+  # type or Draupnir tolerates both — see README.md, "E2EE needs a shim".
+  getEvent-shim.js: |
+    // SPDX-License-Identifier: Apache-2.0
+    //
+    // Normalise @vector-im/matrix-bot-sdk MatrixClient.getEvent() so it always
+    // resolves to a RoomEvent wrapper, matching what Draupnir's
+    // extractRawRoomEvent() requires. Loaded with `node --require`, before
+    // Draupnir's own code runs.
+    "use strict";
+
+    // Bare specifier: resolved from this file's own location, which is a
+    // ConfigMap mount outside the image's module tree. Verified that /node_modules
+    // is still found from there (node walks up to the filesystem root), and that
+    // the instance it returns is the SAME object the app gets — a prototype patch
+    // applied here is visible to /apps/draupnir.
+    const sdk = require("@vector-im/matrix-bot-sdk");
+
+    const { MatrixClient, RoomEvent } = sdk;
+
+    // An already-wrapped event is anything carrying `.event`. That is exactly
+    // the check extractRawRoomEvent makes, kept identical on purpose: if
+    // upstream ever changes the wrapper, this shim stops matching in the same
+    // way the real code does, rather than silently double-wrapping.
+    function isWrapped(value) {
+      return (
+        typeof value === "object" &&
+        value !== null &&
+        "event" in value &&
+        typeof value.event === "object" &&
+        value.event !== null
+      );
+    }
+
+    function installShim(client = MatrixClient, RoomEventCtor = RoomEvent) {
+      const original = client.prototype.getEvent;
+      if (typeof original !== "function") {
+        throw new TypeError(
+          "draupnir-e2ee-shim: MatrixClient.prototype.getEvent is missing — " +
+            "the bot-sdk API changed, re-check upstream issue #1104 before " +
+            "assuming this shim is still needed."
+        );
+      }
+      if (original.__draupnirE2EEShim) {
+        return original;
+      }
+      async function getEvent(roomId, eventId) {
+        const event = await original.call(this, roomId, eventId);
+        // Only the encrypted branch is unwrapped; leave everything else
+        // untouched so the plaintext path keeps its exact current behaviour.
+        return isWrapped(event) || event === null || typeof event !== "object"
+          ? event
+          : new RoomEventCtor(event);
+      }
+      getEvent.__draupnirE2EEShim = true;
+      client.prototype.getEvent = getEvent;
+      return original;
+    }
+
+    installShim();
+
+    // Self-check. Run it with:
+    //   kubectl exec -n matrix deploy/draupnir -- node /shim/getEvent-shim.js
+    // It exercises both shapes getEvent can return against the REAL
+    // extractRawRoomEvent from the image, so it fails loudly if either side
+    // changes under us.
+    if (require.main === module) {
+      const assert = require("node:assert");
+      const {
+        extractRawRoomEvent,
+      } = require("/packages/matrix-protection-suite-for-matrix-bot-sdk/dist/Client/BotSDKBaseClient.js");
+
+      const raw = {
+        type: "m.room.message",
+        event_id: "$selfcheck",
+        room_id: "!r:kalitsune.net",
+        sender: "@draupnir:kalitsune.net",
+        content: { body: "hi" },
+      };
+
+      // Fake client whose unshimmed getEvent returns each shape in turn.
+      const cases = {
+        "encrypted room (bare raw)": raw,
+        "plaintext room (RoomEvent)": new RoomEvent(raw),
+      };
+
+      (async () => {
+        for (const [name, returned] of Object.entries(cases)) {
+          class Fake {
+            async getEvent() {
+              return returned;
+            }
+          }
+          installShim(Fake, RoomEvent);
+          const extracted = extractRawRoomEvent(
+            await new Fake().getEvent("!r:kalitsune.net", "$selfcheck")
+          );
+          assert.strictEqual(extracted.content.body, "hi", name);
+          assert.strictEqual(extracted.type, "m.room.message", name);
+          console.log(`ok  ${name} -> extractRawRoomEvent succeeded`);
+        }
+
+        // And prove the bug is real, i.e. that the shim is still earning its
+        // keep. If this stops throwing, upstream fixed it: delete the shim.
+        assert.throws(
+          () => extractRawRoomEvent(raw),
+          /Something has changed upstream in vector bot sdk/,
+          "unshimmed encrypted-room shape no longer throws — upstream fixed " +
+            "issue #1104, this shim can be removed"
+        );
+        console.log("ok  unshimmed encrypted shape still throws (shim needed)");
+      })().catch((error) => {
+        console.error(error);
+        process.exit(1);
+      });
+    }

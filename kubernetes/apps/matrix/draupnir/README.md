@@ -114,6 +114,42 @@ reopen the decision.
 Two constraints ride along: `pantalaimon.use` must stay `false` (Draupnir
 throws at startup if both are set), and the access token must be clean.
 
+### E2EE needs a shim, and that shim is load-bearing
+
+`shim-configmap.yaml` exists because Draupnir v3.1.0 cannot read its own
+prompts in an encrypted room, which breaks every reaction-confirmed command
+(`watch`, `ban`, `takedown`, …): you press OK and nothing happens, and the log
+shows `TypeError: Something has changed upstream in vector bot sdk`. Upstream
+[issue #1104](https://github.com/the-draupnir-project/Draupnir/issues/1104).
+
+It is a type mismatch between two upstream projects, not a misconfiguration
+here. `@vector-im/matrix-bot-sdk`'s `MatrixClient.getEvent()` returns a
+`RoomEvent` wrapper for a plaintext room but a **bare** event object for an
+encrypted one — the encrypted branch ends in `decryptRoomEvent(...).raw`,
+which unwraps it. Draupnir's `extractRawRoomEvent()` requires the wrapper and
+throws without it. So the failure fires *only* on the encrypted path, which is
+why turning E2EE off "fixed" reactions and why that was the wrong fix.
+
+The shim normalises that one method back to always returning a wrapper. It is
+preloaded with `NODE_OPTIONS=--require`, before any Draupnir code runs, and
+every caller of `extractRawRoomEvent` goes through `getEvent`, so one patch
+covers the reaction handler, the report manager and the web API alike.
+
+**`experimentalRustCrypto: true` and the `NODE_OPTIONS` env var move
+together.** Removing the mount while leaving E2EE on returns the bot to
+silently ignoring every prompt — the worst failure mode available, because it
+looks alive. The shim ships a self-check for exactly that; run it against the
+running pod:
+
+```
+kubectl exec -n matrix deploy/draupnir -- node /shim/getEvent-shim.js
+```
+
+It asserts both event shapes survive `extractRawRoomEvent`, *and* that the
+unshimmed encrypted shape still throws. When that last assertion starts
+failing, upstream has fixed the bug: delete `shim-configmap.yaml`, the
+`NODE_OPTIONS` env var, the `/shim` mount and this section.
+
 ### `managementRoom` is an alias, and Zero Touch is not used
 
 v3.1.0 added "Zero Touch Deployment": set `initialManager` instead of
