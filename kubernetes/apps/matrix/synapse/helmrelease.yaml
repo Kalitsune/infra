@@ -73,6 +73,11 @@ spec:
     synapse:
       ingress:
         host: matrix.kalitsune.net
+      # Synapse caches cross-signing keys in-process, so a row removed from
+      # e2e_cross_signing_keys keeps being served from memory until the process
+      # restarts. Bump this value to force that restart through git.
+      annotations:
+        cache-generation: "2"
       # Each registration is the other half of the Secret its bridge mounts as
       # config.yaml, so the as_token/hs_token pair can never drift. Adding or
       # removing an entry here restarts Synapse: the chart hashes the list into
