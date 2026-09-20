@@ -1,0 +1,21 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: avatar-sync
+  namespace: flux-system
+spec:
+  interval: 30m
+  path: ./kubernetes/apps/matrix/avatar-sync
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  dependsOn:
+    # Creates the matrix namespace and runs the MAS the token was issued by.
+    - name: synapse
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m

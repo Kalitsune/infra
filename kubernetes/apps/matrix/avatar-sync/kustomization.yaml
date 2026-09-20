@@ -1,0 +1,16 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # Synapse admin token for @avatar-sync:kalitsune.net, device avatarsync01.
+  # Minted with `mas-cli manage issue-compatibility-token avatar-sync
+  # avatarsync01 --yes-i-want-to-grant-synapse-admin-privileges` — MAS does not
+  # grant `urn:synapse:admin:*` to a compat token just because the user is
+  # admin=1 in Synapse, the flag is what puts the scope in the introspection
+  # response. Rotating means re-running that command and re-encrypting here;
+  # not a git-only operation, and it mints a NEW device_id each time.
+  - secret.yaml
+
+# No workload yet: the avatar reconciler CronJob lands in a follow-up commit.
+# The token ships first so Flux's decryption is proven before anything depends
+# on it. The `matrix` namespace is created by the synapse app, deliberately not
+# re-declared here (matching ../draupnir).
