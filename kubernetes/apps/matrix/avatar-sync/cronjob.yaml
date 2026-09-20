@@ -7,7 +7,7 @@ spec:
   # Hourly. The only thing that changes upstream is a user uploading a new
   # picture in Pocket ID, and the job is a no-op (one DB query, one HTTP GET
   # and one hash compare per linked user) when nothing changed.
-  schedule: "17 * * * *"
+  schedule: "35 * * * *"
   concurrencyPolicy: Forbid
   successfulJobsHistoryLimit: 1
   failedJobsHistoryLimit: 3
