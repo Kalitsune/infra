@@ -9,8 +9,12 @@ resources:
   # response. Rotating means re-running that command and re-encrypting here;
   # not a git-only operation, and it mints a NEW device_id each time.
   - secret.yaml
+  # The reconciler itself, plus the hourly CronJob that runs it. The script
+  # lives in a ConfigMap rather than a built image: it is ~150 lines of glue
+  # and the Synapse image already ships every dependency it needs.
+  - configmap.yaml
+  - cronjob.yaml
 
-# No workload yet: the avatar reconciler CronJob lands in a follow-up commit.
-# The token ships first so Flux's decryption is proven before anything depends
-# on it. The `matrix` namespace is created by the synapse app, deliberately not
-# re-declared here (matching ../draupnir).
+# The `matrix` namespace is created by the synapse app, deliberately not
+# re-declared here (matching ../draupnir). No httproute.yaml: this job dials
+# out and listens on nothing.

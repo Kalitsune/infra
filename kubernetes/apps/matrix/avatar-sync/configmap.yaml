@@ -1,0 +1,155 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: avatar-sync
+  namespace: matrix
+data:
+  # Why this runs on a timer instead of on login
+  # ============================================
+  #
+  # There is no MAS login hook to attach this to. MAS emits no webhooks and
+  # has no plugin surface -- the only outbound integration in its config crate
+  # is Sentry -- so nothing fires when a user authenticates. The plumbing for
+  # avatars even exists on both sides (MAS's ProvisionRequest has
+  # set_avatar_url/unset_avatar_url, and Synapse's POST /_synapse/mas/
+  # provision_user accepts them) but ProvisionUserJob::run() only ever calls
+  # set_displayname, and that job is scheduled on register / admin edit /
+  # email change -- never on an ordinary login. So even a MAS fork would buy
+  # registration-time only.
+  #
+  # Reconciling from the MAS database sidesteps all of it: MAS already stores
+  # the IdP <-> Matrix mapping in upstream_oauth_links, so no hook and no OIDC
+  # round-trip is needed.
+  #
+  # BOTS ARE EXCLUDED BY CONSTRUCTION, not by a name filter. The driving query
+  # is a JOIN on upstream_oauth_links; an account created with `mas-cli manage
+  # register-user` (draupnir, hermes, hermes-homelab-expert, avatar-sync, the
+  # bridge ghosts) has no row there and is therefore invisible to this script.
+  # Do not "improve" this by listing users from Synapse and skipping a
+  # hardcoded bot list -- the join IS the safety property.
+  sync.py: |
+    """Copy every SSO user's Pocket ID profile picture into their Matrix profile."""
+
+    import hashlib
+    import os
+    import sys
+
+    import psycopg2
+    import requests
+
+    SYNAPSE = os.environ["SYNAPSE_URL"]
+    SERVER = os.environ["MATRIX_SERVER_NAME"]
+    POCKET_ID = os.environ["POCKET_ID_URL"]
+    TOKEN = os.environ["SYNAPSE_ADMIN_TOKEN"]
+    DRY_RUN = os.environ.get("DRY_RUN") == "1"
+
+    AUTH = {"Authorization": f"Bearer {TOKEN}"}
+    TIMEOUT = 30
+
+
+    def linked_users():
+        """(localpart, pocket-id uuid) for every live OIDC-linked MAS account.
+
+        Bots have no upstream_oauth_links row, so this join excludes them.
+        """
+        with psycopg2.connect(
+            host=os.environ["MAS_DB_HOST"],
+            dbname=os.environ["MAS_DB_NAME"],
+            user=os.environ["MAS_DB_USER"],
+            password=os.environ["MAS_DB_PASSWORD"],
+            connect_timeout=10,
+        ) as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT u.username, l.subject FROM upstream_oauth_links l "
+                "JOIN users u ON u.user_id = l.user_id "
+                "WHERE u.deactivated_at IS NULL AND u.locked_at IS NULL "
+                "ORDER BY u.username"
+            )
+            return cur.fetchall()
+
+
+    def current_avatar_bytes(user_id):
+        """Bytes of the user's current avatar, or None if unset/remote/purged."""
+        r = requests.get(
+            f"{SYNAPSE}/_matrix/client/v3/profile/{user_id}/avatar_url",
+            headers=AUTH,
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        mxc = r.json().get("avatar_url") or ""
+        if not mxc.startswith(f"mxc://{SERVER}/"):
+            return None  # unset, or hosted elsewhere: nothing local to compare
+        media_id = mxc.rsplit("/", 1)[1]
+        # Authenticated media. The unauthenticated /_matrix/media/v3/download
+        # is frozen; a 404 here means the media was purged, so treat it as
+        # "no avatar" and re-upload rather than failing the user.
+        r = requests.get(
+            f"{SYNAPSE}/_matrix/client/v1/media/download/{SERVER}/{media_id}",
+            headers=AUTH,
+            timeout=TIMEOUT,
+        )
+        return r.content if r.ok else None
+
+
+    def sync(localpart, subject):
+        user_id = f"@{localpart}:{SERVER}"
+        # Pocket ID serves this route unauthenticated (no auth middleware on
+        # GET /users/:id/profile-picture.png), so no IdP API key is needed.
+        r = requests.get(
+            f"{POCKET_ID}/api/users/{subject}/profile-picture.png", timeout=TIMEOUT
+        )
+        r.raise_for_status()
+        want = r.content
+        digest = hashlib.sha256(want).hexdigest()
+
+        # Compare BYTES, not timestamps. Pocket ID synthesises an initials PNG
+        # for users who never uploaded one, and it is byte-stable (cached on
+        # disk after first render), so hashing is what stops this job from
+        # re-uploading the same image every hour and filling the media repo.
+        if current_avatar_bytes(user_id) == want:
+            print(f"{user_id}: up to date ({digest[:12]})")
+            return False
+        if DRY_RUN:
+            print(f"{user_id}: WOULD upload {len(want)}B {digest[:12]}")
+            return True
+
+        r = requests.post(
+            f"{SYNAPSE}/_matrix/media/v3/upload",
+            params={"filename": f"pocket-id-{digest[:16]}.png"},
+            headers={**AUTH, "Content-Type": "image/png"},
+            data=want,
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        mxc = r.json()["content_uri"]
+        # Synapse stores avatar_url verbatim, so an https:// URL would be
+        # accepted and rendered by nothing: the upload above is mandatory.
+        # Cross-user profile writes are admin-gated, which is the one
+        # capability this token's `urn:synapse:admin:*` scope exists for.
+        r = requests.put(
+            f"{SYNAPSE}/_matrix/client/v3/profile/{user_id}/avatar_url",
+            headers=AUTH,
+            json={"avatar_url": mxc},
+            timeout=TIMEOUT,
+        )
+        r.raise_for_status()
+        print(f"{user_id}: set {mxc} ({digest[:12]}, {len(want)}B)")
+        return True
+
+
+    def main():
+        users = linked_users()
+        print(f"{len(users)} SSO-linked user(s): {[u for u, _ in users]}")
+        changed = failed = 0
+        for localpart, subject in users:
+            try:
+                changed += sync(localpart, subject)
+            except Exception as e:  # one bad user must not stop the rest
+                failed += 1
+                print(f"@{localpart}:{SERVER}: FAILED: {e!r}", file=sys.stderr)
+        print(f"done: {changed} updated, {failed} failed")
+        return 1 if failed else 0
+
+
+    if __name__ == "__main__":
+        sys.exit(main())
