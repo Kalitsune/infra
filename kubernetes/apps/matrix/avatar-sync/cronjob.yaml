@@ -22,7 +22,7 @@ spec:
             # mutable (unlike a Job), so this is documentation rather than a
             # forcing function -- but the next run picks up the new script
             # either way, since the ConfigMap is mounted fresh per pod.
-            kalitsune.net/config-generation: "1"
+            kalitsune.net/config-generation: "2"
         spec:
           restartPolicy: Never
           enableServiceLinks: false

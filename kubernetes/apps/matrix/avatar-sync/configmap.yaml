@@ -45,6 +45,11 @@ data:
 
     AUTH = {"Authorization": f"Bearer {TOKEN}"}
     TIMEOUT = 30
+    NOTICE_BODY = (
+        "Your profile picture was updated to match the one on "
+        "https://id.kalitsune.net. Change it there and it will sync back "
+        "here within the hour."
+    )
 
 
     def linked_users():
@@ -91,6 +96,37 @@ data:
         return r.content if r.ok else None
 
 
+    def notify(user_id):
+        """Tell the user their picture changed, in the server notices room.
+
+        Best-effort and deliberately non-fatal: the avatar is already set by
+        the time this runs, so a failure here must not make the caller retry
+        the upload. Requires server_notices to be enabled in the homeserver
+        config (see apps/matrix/synapse/helmrelease.yaml) -- without it this
+        endpoint answers 400 "Server notices are not enabled on this server".
+        """
+        try:
+            r = requests.post(
+                f"{SYNAPSE}/_synapse/admin/v1/send_server_notice",
+                headers=AUTH,
+                json={
+                    "user_id": user_id,
+                    "content": {
+                        # m.notice, not m.text: clients render it muted and
+                        # bots are required to ignore it, so this cannot
+                        # trigger a reply loop.
+                        "msgtype": "m.notice",
+                        "body": NOTICE_BODY,
+                    },
+                },
+                timeout=TIMEOUT,
+            )
+            r.raise_for_status()
+            print(f"{user_id}: notified ({r.json()['event_id']})")
+        except Exception as e:
+            print(f"{user_id}: notice failed (avatar IS set): {e!r}", file=sys.stderr)
+
+
     def sync(localpart, subject):
         user_id = f"@{localpart}:{SERVER}"
         # Pocket ID serves this route unauthenticated (no auth middleware on
@@ -134,6 +170,7 @@ data:
         )
         r.raise_for_status()
         print(f"{user_id}: set {mxc} ({digest[:12]}, {len(want)}B)")
+        notify(user_id)
         return True
 
 

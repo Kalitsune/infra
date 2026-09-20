@@ -57,6 +57,31 @@ instead and filtering by name would reintroduce exactly the bug this avoids.
 A failure on one user is logged and the rest continue; the job exits non-zero
 if any user failed.
 
+## The notice
+
+After a successful change the user gets an `m.notice` in their Server Notices
+room via `POST /_synapse/admin/v1/send_server_notice`. Only on an actual
+change — the steady-state hourly run sends nothing.
+
+Server notices are enabled in `apps/matrix/synapse/helmrelease.yaml`
+(`synapse.additional.0-server-notices`); without that config key the endpoint
+answers `400 "Server notices are not enabled on this server"`. The sender is
+`@notices:kalitsune.net`, which is **not a registered account and must never
+become one** — Synapse puppets it internally with `create_requester()` and
+`check_user_id_not_appservice_exclusive()` actively refuses to register that
+localpart. It has no MAS row, no password and no token, so avatar-sync's own
+bot-exclusion join cannot see it either.
+
+The notice is best-effort: `notify()` swallows its own exceptions, because the
+avatar is already written by the time it runs and a failed message must not
+make the job retry the upload. A failure prints `notice failed (avatar IS
+set)` to stderr and does not count as a failed user.
+
+`m.notice` rather than `m.text` is deliberate — clients render it muted and
+bots are required to ignore it, so a notice cannot start a reply loop with a
+bridge or with Draupnir. The room is created read-only (Synapse sets
+`users_default: -10`), so replies are not possible anyway.
+
 ## The token
 
 `SYNAPSE_ADMIN_TOKEN` is a MAS compatibility token for
