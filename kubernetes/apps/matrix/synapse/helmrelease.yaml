@@ -78,6 +78,33 @@ spec:
       # restarts. Bump this value to force that restart through git.
       annotations:
         cache-generation: "2"
+      additional:
+        # Server notices: a server-owned DM Synapse can push into, used by
+        # apps/matrix/avatar-sync to tell a user their profile picture was
+        # replaced. Enabling it is what makes POST /_synapse/admin/v1/
+        # send_server_notice stop answering "Server notices are not enabled
+        # on this server".
+        #
+        # @notices:kalitsune.net is NOT a registered account and must not
+        # become one: Synapse puppets it with create_requester() and refuses
+        # to let anything register that localpart
+        # (handlers/register.py check_user_id_not_appservice_exclusive). It
+        # has no MAS row, no password and no token, so it cannot log in and
+        # is not something avatar-sync could ever touch.
+        #
+        # auto_join puts the user straight in the room instead of leaving a
+        # pending invite. The room is created once, on the first notice, and
+        # reused forever after; Synapse creates it with
+        # power_level_content_override users_default: -10, so it is read-only
+        # for the recipient -- hence the topic.
+        0-server-notices:
+          config: |
+            server_notices:
+              system_mxid_localpart: notices
+              system_mxid_display_name: "kalitsune.net"
+              room_name: "Server Notices"
+              room_topic: "Automated messages from kalitsune.net. Read-only."
+              auto_join: true
       # Each registration is the other half of the Secret its bridge mounts as
       # config.yaml, so the as_token/hs_token pair can never drift. Adding or
       # removing an entry here restarts Synapse: the chart hashes the list into
