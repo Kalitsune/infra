@@ -1,5 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
+# Each bridge is split in two halves. config.yaml is plaintext -- edit it with
+# any editor, no sops -- and ships as a hashed ConfigMap. secret.yaml holds
+# only the appservice tokens, the olm pickle key and the registration file,
+# and is the only sops-encrypted file here. The container merges the second
+# over the first at startup; see the command in any deployment.yaml.
 resources:
   - mautrix-whatsapp
   - mautrix-signal

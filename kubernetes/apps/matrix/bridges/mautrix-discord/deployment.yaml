@@ -41,6 +41,13 @@ spec:
       app.kubernetes.io/name: mautrix-discord
   template:
     metadata:
+      annotations:
+        # config.yaml rolls the pod by itself: it comes from a configMapGenerator,
+        # so editing it renames the ConfigMap and changes this pod spec. The
+        # Secret half has no such hash and mounted Secrets never roll a
+        # Deployment, so rotating a token in secret.yaml means bumping this
+        # counter in the same commit.
+        checksum/secrets: "1"
       labels:
         app.kubernetes.io/name: mautrix-discord
     spec:
@@ -49,17 +56,30 @@ spec:
       containers:
         - name: bridge
           image: dock.mau.dev/mautrix/discord:v0.7.7
-          # -n (--no-update) stops the bridge rewriting its own config on
-          # startup: the file is a read-only Secret mount and the write is fatal.
-          command: [/usr/bin/mautrix-discord, -c, /config/config.yaml, -n]
+          # The bridge takes exactly one -c (a second one replaces the first
+          # rather than merging), so the two halves are merged here instead:
+          # yq deep-merges the Secret over the ConfigMap into a tmpfs copy that
+          # only this container can read. yq ships in the bridge image already.
+          command:
+            - sh
+            - -c
+            - >-
+              umask 077 &&
+              yq '. *= load("/secrets/secrets.yaml")' /config/config.yaml
+              > /run/bridge/config.yaml &&
+              exec /usr/bin/mautrix-discord -c /run/bridge/config.yaml -n
           ports:
             - name: appservice
               containerPort: 29334
           volumeMounts:
             - name: config
-              mountPath: /config/config.yaml
-              subPath: config.yaml
+              mountPath: /config
               readOnly: true
+            - name: secrets
+              mountPath: /secrets
+              readOnly: true
+            - name: run
+              mountPath: /run/bridge
             - name: data
               mountPath: /data
           resources:
@@ -70,8 +90,17 @@ spec:
               memory: 512Mi
       volumes:
         - name: config
+          configMap:
+            name: mautrix-discord-config
+        - name: secrets
           secret:
             secretName: mautrix-discord
+        # Holds the merged config only. Memory-backed so the assembled file,
+        # which does contain the tokens, never touches a disk.
+        - name: run
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Mi
         - name: data
           persistentVolumeClaim:
             claimName: mautrix-discord

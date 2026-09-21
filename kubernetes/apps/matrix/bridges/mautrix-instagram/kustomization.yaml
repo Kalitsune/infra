@@ -1,5 +1,17 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
+  # Only the two values that are actually secret: the appservice tokens (plus
+  # the olm pickle key on the bridgev2 bridges) and the registration file.
   - secret.yaml
   - deployment.yaml
+
+# config.yaml is plaintext and editable without sops. Generated rather than
+# hand-written so its ConfigMap name carries a content hash: editing the file
+# renames the ConfigMap, which rolls the Deployment. A hand-written ConfigMap
+# would update in place and leave the pod running the old config.
+configMapGenerator:
+  - name: mautrix-instagram-config
+    namespace: matrix
+    files:
+      - config.yaml

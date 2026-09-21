@@ -1,0 +1,39 @@
+homeserver:
+    address: http://synapse-synapse.matrix.svc.cluster.local:8008
+    domain: kalitsune.net
+    software: standard
+appservice:
+    address: http://mautrix-discord-admin.matrix.svc.cluster.local:29335
+    hostname: 0.0.0.0
+    port: 29335
+    database:
+        # SQLite, not the shared Postgres: single-writer bridge, and a bridge
+        # migration should not be able to touch Synapse's database.
+        type: sqlite3-fk-wal
+        uri: file:/data/discord-admin.db?_txlock=immediate
+    id: discordadmin
+    bot:
+        username: discordadminbot
+        displayname: Discord admin bridge bot
+    ephemeral_events: true
+    # as_token/hs_token are merged in from the Secret at startup (secrets.yaml).
+    # They must stay in sync with registration.yaml.
+bridge:
+    username_template: discordadmin_{{.}}
+    encryption:
+        # Mandate: every bridged room is encrypted, and plaintext is dropped rather
+        # than delivered. require=true is the half that makes that non-optional.
+        allow: true
+        default: true
+        require: true
+        allow_key_sharing: true
+        msc4190: true
+    provisioning:
+        shared_secret: disable
+    permissions:
+        "@maple:kalitsune.net": admin
+logging:
+    min_level: info
+    writers:
+        - type: stdout
+          format: json

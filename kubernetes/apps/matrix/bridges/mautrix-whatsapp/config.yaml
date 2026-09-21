@@ -1,0 +1,50 @@
+homeserver:
+    address: http://synapse-synapse.matrix.svc.cluster.local:8008
+    domain: kalitsune.net
+    software: standard
+appservice:
+    address: http://mautrix-whatsapp.matrix.svc.cluster.local:29318
+    hostname: 0.0.0.0
+    port: 29318
+    id: whatsapp
+    bot:
+        username: whatsappbot
+        displayname: WhatsApp bridge bot
+    ephemeral_events: true
+    async_transactions: false
+    username_template: whatsapp_{{.}}
+    # as_token/hs_token are merged in from the Secret at startup (secrets.yaml).
+    # They must stay in sync with registration.yaml.
+database:
+    # SQLite, not the shared Postgres: these bridges are single-writer and the
+    # blast radius of a bridge migration should not include Synapse's database.
+    type: sqlite3-fk-wal
+    uri: file:/data/whatsapp.db?_txlock=immediate
+encryption:
+    # Mandate: every bridged room is encrypted, and plaintext is dropped rather
+    # than delivered. require=true is the half that makes that non-optional.
+    allow: true
+    default: true
+    require: true
+    allow_key_sharing: true
+    msc4190: true
+    # pickle_key is merged in from the Secret at startup (secrets.yaml).
+    # Changing it orphans the existing olm store.
+    # Cross-sign the bridge bot so clients stop showing it as an
+    # unverified (red shield) device. Synapse skips the MAS/UIA reset
+    # gate for appservice tokens, so this needs no operator approval.
+    self_sign: true
+provisioning:
+    # No provisioning API is exposed, so the shared secret would only ever be
+    # an unused credential sitting in the config.
+    shared_secret: disable
+backfill:
+    enabled: true
+bridge:
+    permissions:
+        "@maple:kalitsune.net": admin
+logging:
+    min_level: info
+    writers:
+        - type: stdout
+          format: json
