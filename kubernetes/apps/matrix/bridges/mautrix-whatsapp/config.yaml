@@ -15,6 +15,10 @@ appservice:
     username_template: whatsapp_{{.}}
     # as_token/hs_token are merged in from the Secret at startup (secrets.yaml).
     # They must stay in sync with registration.yaml.
+network:
+    # Upstream default appends " (WA)" to every ghost's displayname. Dropped:
+    # the rest of the template is kept verbatim from the example config.
+    displayname_template: '{{or .BusinessName .PushName .Phone .RedactedPhone "Unknown user"}}'
 database:
     # SQLite, not the shared Postgres: these bridges are single-writer and the
     # blast radius of a bridge migration should not include Synapse's database.
