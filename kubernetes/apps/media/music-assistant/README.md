@@ -2,16 +2,16 @@
 
 Music library manager and streaming server: connects streaming providers
 (Spotify, Tidal, Deezer, …) plus local files to AirPlay / Chromecast / DLNA /
-Sonos speakers. Web UI at <https://music.lab.kalitsune.net>.
+Sonos speakers. Web UI at <https://music.kalitsune.net>.
 
 ## First boot — do this immediately
 
 A fresh instance has **no users**, and in that state `/setup` is unauthenticated
-and mints the first admin account. `*.lab.kalitsune.net` resolves publicly and
-the `apps` Gateway answers on the WAN, so claim it as soon as the pod is Ready:
+and mints the first admin account. This host is on the apex domain and the
+`apps` Gateway answers on the WAN, so claim it as soon as the pod is Ready:
 
 ```
-https://music.lab.kalitsune.net/setup
+https://music.kalitsune.net/setup
 ```
 
 After that, `/setup` refuses and normal login applies. Users, roles

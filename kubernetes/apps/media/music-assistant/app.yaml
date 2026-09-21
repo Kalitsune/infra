@@ -130,11 +130,14 @@ spec:
 # authenticate with MA long-lived tokens and cannot complete an OIDC browser
 # flow.
 #
+# On the apex rather than `lab.` at the operator's explicit request: this is a
+# music player people use from phones and away from the LAN, not an admin
+# surface over the infrastructure.
+#
 # The catch, and it is a real one: an instance with zero users serves an
-# unauthenticated /setup page that mints the first admin. *.lab.kalitsune.net
-# resolves publicly and this gateway answers on the WAN, so that window is
-# internet-facing until the first admin exists. Claim it immediately after the
-# first successful reconcile.
+# unauthenticated /setup page that mints the first admin. The gateway answers
+# on the WAN, so that window is internet-facing until the first admin exists.
+# Claim it immediately after the first successful reconcile.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -145,7 +148,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - music.lab.kalitsune.net
+    - music.kalitsune.net
   rules:
     - backendRefs:
         - name: music-assistant
