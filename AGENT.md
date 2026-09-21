@@ -22,7 +22,7 @@ it is state that a controller converges on. Act accordingly.
 
 ```
 proxmox/                              OpenTofu — VM definitions on the PVE host
-talos/                                Talos machine configs (controlplane/worker patches)
+talos/                                Talos machine config patches (see talos/README.md)
 kubernetes/                           Flux-managed cluster tree
 ├── apps/<namespace>/<app>/           workloads, plus that app's httproute.yaml
 ├── cicd/flux-system/flux-system/     Flux's own bootstrap + controllers
@@ -534,11 +534,14 @@ own. Prefer an explicit `flux reconcile` over polling and over waiting silently.
 ## Secrets
 
 Never commit a plaintext secret, token, kubeconfig, talosconfig, age key, or
-`.tfstate`. Secrets are SOPS-encrypted at rest in this repo.
+`.tfstate`. Secrets are SOPS-encrypted at rest in this repo. **The repository is
+public** — treat every file you add as world-readable the moment it is pushed.
 
 - If you need a new secret, create the SOPS-encrypted resource and reference it;
   do not inline the value "temporarily".
 - Do not decrypt a secret to standard output while debugging.
+- `talos/` renders `controlplane.yaml`/`worker.yaml` containing the cluster CAs.
+  Those are gitignored. Commit patches under `talos/patches/`, never an output.
 - If you find a plaintext credential committed, stop and report it. Do not
   rewrite history to remove it — that is a human decision, and the credential
   must be rotated regardless.

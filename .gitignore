@@ -7,3 +7,6 @@ terraform.tfvars
 .env
 talos/env.sh
 talos/talosconfig
+talos/secrets.yaml
+talos/controlplane.yaml
+talos/worker.yaml

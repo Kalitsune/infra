@@ -1,0 +1,19 @@
+machine:
+  install:
+    disk: /dev/sda
+    image: ghcr.io/siderolabs/installer:v1.13.4
+    wipe: false
+cluster:
+  network:
+    # Cilium is installed by Flux, so Talos must not lay down a CNI.
+    cni:
+      name: none
+  # Cilium replaces kube-proxy (kubeProxyReplacement=true).
+  proxy:
+    disabled: true
+  discovery:
+    registries:
+      # Members are discovered through discovery.talos.dev only; the Kubernetes
+      # registry needs a working apiserver, which is circular during bootstrap.
+      kubernetes:
+        disabled: true

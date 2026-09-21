@@ -1,0 +1,4 @@
+machine:
+  nodeLabels:
+    # Envoy Gateway's LoadBalancer should never land on the control plane.
+    node.kubernetes.io/exclude-from-external-load-balancers: ""
