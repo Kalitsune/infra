@@ -1,0 +1,152 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: music-assistant-data
+  namespace: media
+spec:
+  accessModes: [ReadWriteOnce]
+  # SQLite. Music Assistant keeps its whole library, user accounts, auth tokens
+  # and provider config in /data/music_assistant.db -- an embedded engine with
+  # no server process, which needs fcntl() locking and WAL semantics that NFS
+  # does not reliably provide. Never move this to truenas-nfs.
+  #
+  # Losing this volume loses the user accounts and every streaming-provider
+  # login, not just the scanned library: re-running /setup is the only recovery.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: music-assistant
+  namespace: media
+spec:
+  replicas: 1
+  # SQLite plus hostNetwork. RollingUpdate's default maxSurge: 1 would start a
+  # second pod that opens the same database *and* tries to bind 8095/8097 on a
+  # host port the old pod still holds. Recreate trades a few seconds of
+  # downtime for both problems.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: music-assistant
+  template:
+    metadata:
+      labels:
+        app: music-assistant
+    spec:
+      # Music Assistant discovers players with mDNS and SSDP -- multicast, which
+      # never crosses the pod network's veth boundary -- and then streams to
+      # AirPlay/Chromecast/DLNA/Sonos devices that open *random* TCP and UDP
+      # ports back to the server. A Service cannot express "an unbounded port
+      # range plus multicast", so upstream lists host networking (or macvlan) as
+      # a hard requirement, not a tuning option. Same reasoning as coturn in the
+      # matrix namespace.
+      #
+      # Consequence worth knowing: the pod binds these directly on the worker's
+      # LAN address (192.168.1.171), so MA auto-detects that as its stream URL
+      # and players on the flat 192.168.1.0/24 reach it without the gateway.
+      # It also binds ports not declared below (8927 sendspin, ephemeral AirPlay
+      # ports) -- those are invisible to the scheduler, so keep an eye out if a
+      # future workload wants them.
+      hostNetwork: true
+      # With hostNetwork the default ClusterFirst silently falls back to the
+      # node's resolv.conf, which cannot resolve *.svc.cluster.local.
+      dnsPolicy: ClusterFirstWithHostNet
+      containers:
+        - name: music-assistant
+          # Pinned tag + digest: the tag documents intent, the digest enforces
+          # it. An upgrade bumps BOTH. Do not switch between stable/beta tags --
+          # upstream states the /data directory is not compatible across
+          # channels and there is no migration back.
+          image: ghcr.io/music-assistant/server:2.10.3@sha256:885872224fa541c0faefc936625c939ba705a00e89c180f89e877f58448ea5d5
+          env:
+            - name: LOG_LEVEL
+              value: info
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            # hostPort is redundant under hostNetwork (the process binds the
+            # host directly either way) but declaring it makes the reservation
+            # visible to the scheduler, so a later pod wanting 8095 is refused
+            # instead of silently crashlooping on EADDRINUSE.
+            - name: http
+              containerPort: 8095
+              hostPort: 8095
+            - name: stream
+              containerPort: 8097
+              hostPort: 8097
+          resources:
+            requests:
+              cpu: 200m
+              memory: 1Gi
+            limits:
+              # Upstream floor is 2Gi; Smart Fades / audio analysis wants 4Gi.
+              # No CPU limit on purpose -- transcoding is bursty and throttling
+              # it produces audible dropouts rather than a slow sync.
+              memory: 4Gi
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            # The shared media PVC, read-only. MA never writes to a music
+            # source, and mounting the share on the cluster rather than inside
+            # the container avoids the SYS_ADMIN/DAC_READ_SEARCH capabilities
+            # MA's own SMB/NFS provider would need. Point the "Local files"
+            # provider at /media/Music (create it first -- as of this commit
+            # the share has Movies/Shows/Anime/EPITA and no music directory).
+            - name: media
+              mountPath: /media
+              readOnly: true
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: music-assistant-data
+        - name: media
+          persistentVolumeClaim:
+            claimName: media-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: music-assistant
+  namespace: media
+spec:
+  selector:
+    app: music-assistant
+  ports:
+    - name: http
+      port: 8095
+      targetPort: 8095
+---
+# No oauth2-proxy in front, unlike the *arr stack.
+#
+# Music Assistant ships real authentication of its own: bcrypt password
+# hashing, progressive rate limiting on login, token sessions, and admin/user/
+# guest roles. Wrapping it in Pocket ID would mean two login prompts and would
+# break the Home Assistant integration and the mobile/PWA clients, which
+# authenticate with MA long-lived tokens and cannot complete an OIDC browser
+# flow.
+#
+# The catch, and it is a real one: an instance with zero users serves an
+# unauthenticated /setup page that mints the first admin. *.lab.kalitsune.net
+# resolves publicly and this gateway answers on the WAN, so that window is
+# internet-facing until the first admin exists. Claim it immediately after the
+# first successful reconcile.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: music-assistant
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - music.lab.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: music-assistant
+          port: 8095
