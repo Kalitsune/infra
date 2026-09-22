@@ -12,12 +12,19 @@ data:
   # Hard limit: 4096 bytes. Envoy rejects a larger direct-response body, and the
   # failure surfaces as the whole HTTPRoute going unaccepted — not as a
   # truncated page. Check `wc -c` on the body before committing a redesign.
+  #
+  # Envoy parses this body for access-log command operators, so a literal
+  # percent sign must be doubled: `width:100%%` renders as `width:100%`. An
+  # unescaped `%` makes Envoy REJECT the whole RouteConfiguration with
+  # "Couldn't find valid command at position N" — every status stays green
+  # (HTTPRoute Accepted, Flux Ready) while the host 404s, because the proxy
+  # silently keeps serving its last known good config.
   response.body: |
     <!DOCTYPE html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Agents</title><style>
     :root{--bg:#1C1410;--tx:#F0E1D3;--sf:#2A1F19;--ac:#C77B51;--bt:#3A2B22;--bd:#5C4636;--mt:#B89A82}
     *{box-sizing:border-box}
     body{background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:2rem}
-    .c{background:var(--sf);border:1px solid var(--ac);border-radius:10px;padding:2rem;width:100%;max-width:26rem;box-shadow:0 4px 12px #0006}
+    .c{background:var(--sf);border:1px solid var(--ac);border-radius:10px;padding:2rem;width:100%%;max-width:26rem;box-shadow:0 4px 12px #0006}
     h1{color:var(--ac);margin:0;font-size:1.5rem;letter-spacing:-.5px}
     p{color:var(--mt);margin:.25rem 0 1.5rem;font-size:.85rem}
     a{display:flex;gap:.9rem;align-items:center;background:var(--bt);color:var(--tx);text-decoration:none;padding:.8rem 1rem;border:1px solid var(--bd);border-radius:12px;margin-bottom:.75rem;transition:.15s}
