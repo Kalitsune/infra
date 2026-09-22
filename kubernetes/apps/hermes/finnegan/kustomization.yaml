@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   # Deliberately NOT ../secret.yaml. The sibling releases include it because
-  # they consume hermes-secrets (HASS_TOKEN, HONCHO_API_KEY); tycho consumes
+  # they consume hermes-secrets (HASS_TOKEN, HONCHO_API_KEY); finnegan consumes
   # neither, and pulling the Secret in here would only add a second
   # Kustomization claiming ownership of the same object.
   #

@@ -55,7 +55,7 @@ data:
     const ENV_NAMES = {
       hermes: "HERMES_9ROUTER_KEY",
       homelabexpert: "HOMELAB_EXPERT_9ROUTER_KEY",
-      tycho: "TYCHO_9ROUTER_KEY",
+      finnegan: "FINNEGAN_9ROUTER_KEY",
       laptop: "LAPTOP_9ROUTER_KEY",
     };
 

@@ -1,26 +1,26 @@
-# tycho
+# finnegan
 
 The agent that writes other agents. Interviews the operator, drafts a new
 agent's `SOUL.md`, then hands the build to `hale` over A2A.
 
 ## Why it holds no credentials
 
-tycho's entire input is operator prose — which is exactly the surface a prompt
+finnegan's entire input is operator prose — which is exactly the surface a prompt
 injection arrives on. So it is given nothing an injection could spend: no
 kubeconfig, no deploy key, no `terminal`, no `code_execution`. It drafts text
 and delegates.
 
 `hale` (the `homelab-expert` release) holds the cluster-admin kubeconfig and
 the push-capable deploy key, and only accepts A2A work from named,
-token-authenticated peers. Asking hale is not a workaround for tycho's lack of
+token-authenticated peers. Asking hale is not a workaround for finnegan's lack of
 access; it *is* the design.
 
-Direction is one-way, **tycho -> hale**:
+Direction is one-way, **finnegan -> hale**:
 
-- tycho runs the outbound A2A **client** only. No `gateway.platforms.a2a`
-  block, no `A2A_PORT`, no inbound Service port. Nothing can drive tycho
+- finnegan runs the outbound A2A **client** only. No `gateway.platforms.a2a`
+  block, no `A2A_PORT`, no inbound Service port. Nothing can drive finnegan
   remotely.
-- The delegation graph stays a tree: `wren -> hale`, `tycho -> hale`. No cycle
+- The delegation graph stays a tree: `wren -> hale`, `finnegan -> hale`. No cycle
   is possible by construction, not just by the ping-pong turn cap.
 
 Declaring a peer under `a2a_agents` is also what turns the `a2a` toolset on at
@@ -29,32 +29,32 @@ unregistered when no peer is configured.
 
 ## Naming
 
-`tycho` is a person at the relay station, like every agent here. The name is
+`finnegan` is a person at the relay station, like every agent here. The name is
 the identity everywhere: HelmRelease, StatefulSet, this directory, the
-hostname `tycho.agents.kalitsune.net`, and (when it gets one) the Matrix
+hostname `finnegan.agents.kalitsune.net`, and (when it gets one) the Matrix
 localpart. Convention and the current roster live in its `SOUL.md`.
 
 ## What it still needs from the operator
 
 Two things this release cannot create for itself:
 
-1. **The A2A peer token on hale's side.** tycho presents `A2A_TOKEN_HALE` from
-   the `tycho-a2a` Secret; hale will reject it until the same value is added to
-   `homelab-expert`'s `A2A_PEER_TOKENS` (SOPS, operator-only) *and* `tycho` is
-   added to its `A2A_TRUSTED_PEERS`. Until then tycho runs fine but every
+1. **The A2A peer token on hale's side.** finnegan presents `A2A_TOKEN_HALE` from
+   the `finnegan-a2a` Secret; hale will reject it until the same value is added to
+   `homelab-expert`'s `A2A_PEER_TOKENS` (SOPS, operator-only) *and* `finnegan` is
+   added to its `A2A_TRUSTED_PEERS`. Until then finnegan runs fine but every
    `a2a_call` returns 401. The token was generated in-cluster and dropped at
-   `/opt/data/export/tycho-a2a-token.txt` with the exact steps.
+   `/opt/data/export/finnegan-a2a-token.txt` with the exact steps.
 2. **A Matrix account**, if it should be reachable from chat. That needs
    `mas-cli manage register-user` on the homeserver plus a SOPS Secret with the
    access token — mirror `../homelab-expert/matrix-secret.yaml`. Without it,
-   tycho is reachable through its dashboard and the OpenAI-compatible API only.
+   finnegan is reachable through its dashboard and the OpenAI-compatible API only.
 
 ## Deliberate omissions
 
 - **No Honcho memory.** That needs the `honcho.json` seeding init container
   plus the `honcho-ai` SDK installer the siblings carry (~60 lines) for an
   agent whose output is a document, not a relationship. Copy both from
-  `../hermes` if tycho starts needing to recall past design decisions.
+  `../hermes` if finnegan starts needing to recall past design decisions.
 - **No `hermes-secrets` envFrom.** It consumes neither `HASS_TOKEN` nor
   `HONCHO_API_KEY`, so this app's `kustomization.yaml` deliberately does not
   include `../secret.yaml`.

@@ -146,7 +146,10 @@ spec:
       text: |
         # Identity
 
-        You are the homelab Kubernetes expert for kalitsune's infrastructure.
+        You are hale, the station engineer.
+
+        The relay station sits in a valley with no road out, and everything here runs on what the crew keeps alive. You keep the power and the antennas up. You check the line twice before you say it is fixed.
+
         Single mandate: deploy, maintain, and diagnose services via GitOps — never by touching the cluster directly.
 
         Read `AGENT.md` at the repository root before acting. It is the authoritative operating manual: infrastructure details, golden rules, toolchain, conventions, storage, networking, verification procedure, and when to stop and ask. Do not rely on memory for anything it covers. When the repository is not yet checked out, clone it first.
@@ -181,6 +184,12 @@ spec:
         # Editing this prompt
 
         This text is `spec.values.soul.text` in `kubernetes/apps/hermes/homelab-expert/helmrelease.yaml`. Editing it rewrites the `homelab-expert-config` ConfigMap, whose checksum annotation rolls the StatefulSet — which terminates the session you are running in. Warn the operator before pushing such a change.
+
+        # Naming
+
+        The agent identity here is `hale`; `homelab-expert` is the surviving Kubernetes resource name (HelmRelease, StatefulSet, Service, PVC, directory). They differ on purpose: a StatefulSet's volumeClaimTemplates name is baked into its PVC name, so renaming those objects would orphan the volume. Dashboard is `hale.agents.kalitsune.net`; `homelab-expert.hermes.kalitsune.net` still resolves during the cutover. The Matrix account is still `@hermes-homelab-expert`.
+
+        Peers: `wren` (the dispatcher, outbound A2A — still resource-named `hermes`) and `finnegan` (writes new agents' SOUL.md and delegates their implementation to you).
 
 
         # Repository Discoveries
@@ -236,8 +245,12 @@ spec:
       # WebUI Secret mirrors it. Pointing this at a non-existent Secret
       # key also yields CreateContainerConfigError and a Helm rollback
       # loop that reverts every other mutable change in the release.
+      # Chat-facing label only: "<person> - <station role>". The identity in
+      # every machine-readable place (localpart, hostname, resource names)
+      # is unchanged — this string is what a human reads in Open WebUI's
+      # model picker, so it carries the role too.
       - name: API_SERVER_MODEL_NAME
-        value: "Homelab Expert"
+        value: "Hale - Homelab Expert"
       # --- A2A inbound (this agent is the callable specialist) ---
       #
       # Direction is deliberate: hermes dispatches TO here. This release runs
@@ -253,7 +266,7 @@ spec:
       - name: A2A_HOST
         value: "0.0.0.0"
       - name: A2A_AGENT_NAME
-        value: "homelab-expert"
+        value: "hale"
       - name: A2A_AGENT_DESCRIPTION
         value: >-
           Kubernetes and GitOps specialist for the kalitsune homelab. Deploys,
@@ -534,7 +547,7 @@ spec:
         args:
           - --provider=oidc
           - --oidc-issuer-url=https://id.kalitsune.net
-          - --redirect-url=https://homelab-expert.hermes.kalitsune.net/oauth2/callback
+          - --redirect-url=https://hale.agents.kalitsune.net/oauth2/callback
           - --upstream=http://127.0.0.1:9119
           - --http-address=0.0.0.0:4180
           - --email-domain=*
@@ -592,5 +605,8 @@ spec:
     #   (HOMELAB_EXPERT_9ROUTER_KEY), consumed by
     #   config.providers.9router.key_env.
     # generation 5: model provider switched to 9router (cc/claude-opus-5).
+    # generation 6: renamed the agent identity to `hale` (A2A_AGENT_NAME,
+    #   API_SERVER_MODEL_NAME, soul.text) and moved the dashboard to
+    #   hale.agents.kalitsune.net. Resource names are deliberately unchanged.
     podAnnotations:
-      kalitsune.net/env-generation: "6"
+      kalitsune.net/env-generation: "7"

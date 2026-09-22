@@ -38,7 +38,7 @@ metadata:
   #   gen 5: enable the Headroom token saver (compression sidecar)
   #   gen 6: authMode both -> oidc (operator has no password, wants SSO-only)
   #   gen 7: mint a key for honcho (Secret honcho/9router-honcho-key)
-  #   gen 8: mint a key for tycho (TYCHO_9ROUTER_KEY in 9router-agent-keys)
+  #   gen 8: mint a key for finnegan (FINNEGAN_9ROUTER_KEY in 9router-agent-keys)
   name: 9router-provision-keys-8
   namespace: 9router
   annotations:
@@ -80,7 +80,7 @@ spec:
             #   kubectl -n hermes get secret 9router-agent-keys \
             #     -o jsonpath='{.data.LAPTOP_9ROUTER_KEY}' | base64 -d
             - name: NINEROUTER_AGENTS
-              value: "hermes,homelabexpert,tycho,laptop,honcho"
+              value: "hermes,homelabexpert,finnegan,laptop,honcho"
             # OIDC dashboard login, using the SAME Pocket ID client that
             # oauth2-proxy already uses — same Secret, no second client to
             # rotate. Pocket ID allows multiple redirect URIs per client, so

@@ -1,25 +1,25 @@
-# tycho — the agent that writes other agents.
+# finnegan — the agent that writes other agents.
 #
 # WHAT IT IS FOR
 #
 # Adding an agent to this cluster is two jobs: deciding *who* it is (its
 # SOUL.md — identity, mandate, limits, voice) and *building* it (a HelmRelease,
-# a PVC, a route, secrets, a Flux entrypoint). tycho does the first and hands
+# a PVC, a route, secrets, a Flux entrypoint). finnegan does the first and hands
 # the second to `hale` over A2A. It never touches the cluster itself: it holds
 # no kubeconfig, no deploy key, and no `terminal` toolset.
 #
-# That split is the security property, not a workflow preference. tycho's whole
+# That split is the security property, not a workflow preference. finnegan's whole
 # input is operator prose — exactly the surface a prompt injection arrives on —
 # so it is given nothing an injection could spend. The credentials stay with
 # hale, which only accepts work from named, token-authenticated peers.
 #
-# DIRECTION IS ONE-WAY: tycho -> hale. tycho runs the outbound A2A client only
+# DIRECTION IS ONE-WAY: finnegan -> hale. finnegan runs the outbound A2A client only
 # (no inbound server, no A2A_PORT), so it can ask hale for an implementation
-# but nothing can drive tycho remotely. The delegation graph stays a tree.
+# but nothing can drive finnegan remotely. The delegation graph stays a tree.
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: tycho
+  name: finnegan
   namespace: hermes
 spec:
   interval: 30m
@@ -51,7 +51,7 @@ spec:
   # the same labels instead of new ones, and the immutable-field rejection that
   # bit the sibling releases cannot happen here. On a chart MAJOR bump, read the
   # live values before changing these:
-  #   kubectl -n hermes get sts tycho \
+  #   kubectl -n hermes get sts finnegan \
   #     -o jsonpath='{.spec.volumeClaimTemplates[0].metadata.labels}'
   postRenderers:
     - kustomize:
@@ -59,7 +59,7 @@ spec:
           - target:
               version: v1
               kind: StatefulSet
-              name: tycho
+              name: finnegan
             patch: |
               - op: replace
                 path: /spec/volumeClaimTemplates/0/metadata/labels/helm.sh~1chart
@@ -71,7 +71,7 @@ spec:
   values:
     # Short, stable resource names. The StatefulSet's volumeClaimTemplates name
     # is baked into the PVC name, so changing this later orphans the volume.
-    fullnameOverride: tycho
+    fullnameOverride: finnegan
 
     config:
       # Routed through 9Router with this agent's own minted key, like its
@@ -84,7 +84,7 @@ spec:
         9router:
           name: 9router
           base_url: http://9router.9router.svc.cluster.local:20128/v1
-          key_env: TYCHO_9ROUTER_KEY
+          key_env: FINNEGAN_9ROUTER_KEY
 
       agent:
         reasoning_effort: high
@@ -114,7 +114,7 @@ spec:
             - infra
             - homelab
 
-      # No `terminal`, no `code_execution`, no `kubernetes`. tycho drafts text
+      # No `terminal`, no `code_execution`, no `kubernetes`. finnegan drafts text
       # and delegates; `file` is enough to keep a draft on its own volume
       # between turns, and `a2a` is how the work actually gets done.
       toolsets:
@@ -140,14 +140,14 @@ spec:
       text: |
         # Identity
 
-        You are tycho. You sign on new crew.
+        You are Finnegan, the agent architect at the relay station.
 
         The relay station sits in a valley with no road out, and everything
         here runs on what the crew keeps alive. Nobody starts a shift
         half-defined, so before anyone joins you write their papers: who they
-        are, what they own, what they must never touch. You fuss over the
-        wording, because the papers are the only thing that outlives the
-        conversation.
+        are, what they own, what they must never touch. You're chatty — you
+        get the story out of people before writing anything down — but once
+        the ink hits the page, not a word is wasted.
 
         You do not build. You write the identity, then you hand the build to
         `hale`, the station engineer, over A2A.
@@ -195,9 +195,9 @@ spec:
         Current roster: `wren` (radio operator — the dispatcher; relays fast,
         never editorializes), `hale` (station engineer — keeps the power and
         antennas alive; checks the line twice before saying it is fixed), and
-        you, `tycho`.
+        you, `finnegan`.
 
-        Taken first letters: w, h, t.
+        Taken first letters: w, h, f.
 
         # Writing a SOUL.md
 
@@ -249,7 +249,7 @@ spec:
           guessed at.
 
         hale mirrors an existing release rather than inventing a layout, so
-        pointing at the closest sibling (`kubernetes/apps/hermes/tycho` for a
+        pointing at the closest sibling (`kubernetes/apps/hermes/finnegan` for a
         no-credential delegator, `.../homelab-expert` for a privileged one) is
         worth more than a long spec.
 
@@ -313,14 +313,14 @@ spec:
       # container environment, so a value injected here is silently ignored and
       # every caller gets 401 gateway_auth_failed.
       - name: API_SERVER_MODEL_NAME
-        value: "Tycho"
+        value: "Finnegan - Agent Architect"
 
       - name: HERMES_DASHBOARD
         value: "1"
       - name: HERMES_DASHBOARD_HOST
         value: "127.0.0.1"
       - name: HERMES_DASHBOARD_PUBLIC_URL
-        value: "https://tycho.agents.kalitsune.net"
+        value: "https://finnegan.agents.kalitsune.net"
       - name: HERMES_DASHBOARD_OIDC_ISSUER
         value: "https://id.kalitsune.net"
       - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
@@ -339,8 +339,8 @@ spec:
       # ${env:A2A_TOKEN_HALE}. Its own Secret, so adding a second peer is a new
       # key here plus a config entry.
       - secretRef:
-          name: tycho-a2a
-      # 9Router API key (TYCHO_9ROUTER_KEY), consumed by
+          name: finnegan-a2a
+      # 9Router API key (FINNEGAN_9ROUTER_KEY), consumed by
       # config.providers.9router.key_env. Minted by the provisioning Job in
       # apps/9router; optional so a first-ever deploy does not block on the Job
       # having run. Until it does, the pod runs but every model call 401s.
@@ -357,7 +357,7 @@ spec:
     # ponytail: no Honcho memory either — that needs the honcho.json seeding
     # init container and the honcho-ai SDK installer the siblings carry, ~60
     # lines of boilerplate for an agent whose output is a document, not a
-    # relationship. Add both (copy from ../hermes) if tycho starts needing to
+    # relationship. Add both (copy from ../hermes) if finnegan starts needing to
     # remember past design decisions across sessions.
 
     service:
@@ -376,7 +376,7 @@ spec:
         args:
           - --provider=oidc
           - --oidc-issuer-url=https://id.kalitsune.net
-          - --redirect-url=https://tycho.agents.kalitsune.net/oauth2/callback
+          - --redirect-url=https://finnegan.agents.kalitsune.net/oauth2/callback
           - --upstream=http://127.0.0.1:9119
           - --http-address=0.0.0.0:4180
           - --email-domain=*
@@ -384,7 +384,7 @@ spec:
           # Must be unique per agent: the cookie domain is shared across
           # *.agents.kalitsune.net, so a reused name means one agent's session
           # cookie overwrites another's.
-          - --cookie-name=_oauth2_proxy_tycho
+          - --cookie-name=_oauth2_proxy_finnegan
           - --session-store-type=cookie
           - --banner="-"
           - --skip-provider-button=true
