@@ -8,6 +8,9 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
+    # hale is this agent's name; agents live under <name>.agents.kalitsune.net.
+    # Old hostname kept attached for the cutover — see the sibling hermes route.
+    - hale.agents.kalitsune.net
     - homelab-expert.hermes.kalitsune.net
   rules:
     # Rule 1 – pass through when provider is already set (prevents redirect loop)
