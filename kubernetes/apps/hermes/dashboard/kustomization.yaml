@@ -7,4 +7,3 @@ resources:
   - oidc-secret.yaml
   - configmap.yaml
   - httproute.yaml
-  - rendercheck.yaml
