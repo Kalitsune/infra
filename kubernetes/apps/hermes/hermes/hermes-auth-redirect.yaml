@@ -34,7 +34,11 @@ spec:
                 function envoy_on_request(request_handle)
                   local authority = request_handle:headers():get(":authority") or ""
                   local path = request_handle:headers():get(":path") or ""
-                  if authority ~= "hermes.kalitsune.net" then return end
+                  -- Both names during the rename cutover: wren.agents is the
+                  -- new identity, hermes.kalitsune.net the legacy alias still
+                  -- attached to the same HTTPRoute.
+                  if authority ~= "wren.agents.kalitsune.net"
+                     and authority ~= "hermes.kalitsune.net" then return end
                   if not path:match("^/auth/login") then return end
                   if path:match("[?&]provider=") then return end
                   local new_path

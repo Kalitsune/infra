@@ -299,13 +299,13 @@ spec:
       # key also yields CreateContainerConfigError and a Helm rollback
       # loop that reverts every other mutable change in the release.
       - name: API_SERVER_MODEL_NAME
-        value: "Hermes"
+        value: "Wren"
       - name: HERMES_DASHBOARD
         value: "1"
       - name: HERMES_DASHBOARD_HOST
         value: "127.0.0.1"
       - name: HERMES_DASHBOARD_PUBLIC_URL
-        value: "https://hermes.kalitsune.net"
+        value: "https://wren.agents.kalitsune.net"
       - name: HERMES_DASHBOARD_OIDC_ISSUER
         value: "https://id.kalitsune.net"
       - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
@@ -350,7 +350,7 @@ spec:
         args:
           - --provider=oidc
           - --oidc-issuer-url=https://id.kalitsune.net
-          - --redirect-url=https://hermes.kalitsune.net/oauth2/callback
+          - --redirect-url=https://wren.agents.kalitsune.net/oauth2/callback
           - --upstream=http://127.0.0.1:9119
           - --http-address=0.0.0.0:4180
           - --email-domain=*
