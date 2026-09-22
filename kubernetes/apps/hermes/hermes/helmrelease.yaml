@@ -298,8 +298,12 @@ spec:
       # WebUI Secret mirrors it. Pointing this at a non-existent Secret
       # key also yields CreateContainerConfigError and a Helm rollback
       # loop that reverts every other mutable change in the release.
+      # Chat-facing label only: "<person> - <station role>". The identity in
+      # every machine-readable place (localpart, hostname, resource names)
+      # stays `hermes`/`wren` — this string is what a human reads in Open
+      # WebUI's model picker, so it carries the role too.
       - name: API_SERVER_MODEL_NAME
-        value: "Wren"
+        value: "Wren - Dispatcher"
       - name: HERMES_DASHBOARD
         value: "1"
       - name: HERMES_DASHBOARD_HOST
