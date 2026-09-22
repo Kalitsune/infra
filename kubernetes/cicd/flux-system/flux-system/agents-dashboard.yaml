@@ -1,0 +1,22 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: agents-dashboard
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./kubernetes/apps/hermes/dashboard
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # The `hermes` namespace this Kustomization writes into is owned by the
+  # `hermes` Kustomization.
+  dependsOn:
+    - name: hermes
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m
