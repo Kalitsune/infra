@@ -13,6 +13,11 @@ spec:
     # radarr/sonarr/prowlarr/bazarr/torrent .lab.kalitsune.net
     - "*.lab.kalitsune.net"
     - "*.hermes.kalitsune.net"
+    # Agent dashboards are moving to <name>.agents.kalitsune.net, one label per
+    # agent identity. Same exposure as *.hermes.kalitsune.net (public listener,
+    # oauth2-proxy + Pocket ID in front) — this is a rename, not a promotion.
+    # Kept alongside *.hermes.* so both resolve during the cutover.
+    - "*.agents.kalitsune.net"
     # requests.watch.kalitsune.net (seerr)
     - "*.watch.kalitsune.net"
     - "*.matrix.kalitsune.net"
