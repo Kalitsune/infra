@@ -1,0 +1,45 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: tycho
+  namespace: hermes
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - tycho.agents.kalitsune.net
+  rules:
+    # Rule 1 – pass through when provider is already set (prevents redirect loop)
+    - matches:
+        - path:
+            type: Exact
+            value: /auth/login
+          queryParams:
+            - name: provider
+              type: Exact
+              value: self-hosted
+      backendRefs:
+        - name: tycho
+          port: 4180
+
+    # Rule 2 – redirect /auth/login to inject provider=self-hosted.
+    # There is no Lua filter for this hostname (the EnvoyPatchPolicy covers the
+    # dispatcher only), so this rule always fires. The next= query param is
+    # dropped on that path, but the login still succeeds.
+    - matches:
+        - path:
+            type: Exact
+            value: /auth/login
+      filters:
+        - type: RequestRedirect
+          requestRedirect:
+            statusCode: 302
+            path:
+              type: ReplaceFullPath
+              replaceFullPath: /auth/login?provider=self-hosted
+
+    # Rule 3 – all other traffic
+    - backendRefs:
+        - name: tycho
+          port: 4180
