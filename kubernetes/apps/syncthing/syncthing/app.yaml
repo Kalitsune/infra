@@ -61,18 +61,49 @@ spec:
       securityContext:
         runAsUser: 1000
         runAsGroup: 1000
-        runAsNonRoot: true
-        # local-path is block storage, so fsGroup applies and the config volume
-        # comes up owned by the right gid. The NFS data volume does NOT honour
-        # fsGroup -- if Syncthing cannot write there, that is an export
-        # ownership question on the TrueNAS side, not a manifest bug.
+        # Not set pod-wide: the chown init container below has to be root.
+        # The syncthing container asserts it individually instead.
         fsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
+      # The NFS data volume comes up root:root 0755 and fsGroup does NOT fix
+      # it: democratic-csi publishes fsGroupPolicy=ReadWriteOnceWithFSType, so
+      # the kubelet skips ownership management on a ReadWriteMany volume, and
+      # the dataset itself is created by the driver with
+      # datasetPermissionsUser/Group 0. Verified: without this, Syncthing as
+      # uid 1000 gets "Permission denied" creating anything under
+      # /var/syncthing/data.
+      #
+      # The config volume is local-path (block), where fsGroup does apply, so
+      # only the data mount needs this.
+      #
+      # ponytail: chowns the mount root only, not -R. Correct for a volume
+      # Syncthing populates itself, since everything below is created as uid
+      # 1000. Add -R if pre-existing files are ever restored into this volume
+      # with foreign ownership.
+      initContainers:
+        - name: chown-data
+          image: busybox:latest
+          # Root with the runtime's DEFAULT capability set, not drop-ALL-add-
+          # CHOWN: `baseline` PodSecurity (this cluster's default, set in the
+          # apiserver admission config) forbids adding any capability except
+          # NET_BIND_SERVICE, so an explicit `add: [CHOWN]` is rejected at
+          # admission. Dropping ALL would also strip CAP_CHOWN and make the
+          # chown fail even as uid 0.
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+            allowPrivilegeEscalation: false
+          command: ["sh", "-c", "chown 1000:1000 /var/syncthing/data"]
+          volumeMounts:
+            - name: data
+              mountPath: /var/syncthing/data
       containers:
         - name: syncthing
           image: syncthing/syncthing:2.1.5@sha256:84dcf202b0890f795c4c3899d35a5ac7369bb8b72b5c270078c50247da4ddeef
           securityContext:
+            runAsNonRoot: true
             allowPrivilegeEscalation: false
             capabilities:
               drop: [ALL]
