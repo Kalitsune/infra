@@ -37,9 +37,12 @@ spec:
       enabled: false
     openaiApiKey: ""
     openaiBaseApiUrl: ""
+    # Order is load-bearing: OPENAI_API_KEYS is a parallel `;`-joined list in
+    # open-webui-openai-keys, matched to these URLs by index.
     openaiBaseApiUrls:
       - "http://hermes-hermes-agent.hermes.svc.cluster.local:8642/v1"
       - "http://homelab-expert.hermes.svc.cluster.local:8642/v1"
+      - "http://finnegan.hermes.svc.cluster.local:8642/v1"
       - "http://9router.9router.svc.cluster.local:20128/v1"
     openaiApiKeysExistingSecret: "open-webui-openai-keys"
     openaiApiKeysExistingSecretKey: "keys"
