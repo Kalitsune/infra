@@ -424,5 +424,9 @@ spec:
     # envFrom is injected ONCE at container start; editing it does NOT roll a
     # StatefulSet, so the process keeps the OLD value while Flux reports Ready.
     # generation 1: initial release.
+    # generation 2: FINNEGAN_9ROUTER_KEY finally exists in 9router-agent-keys
+    #               (provision gen 9); the pod started before it was minted and
+    #               holds an env without it, so every model call 401s until
+    #               this rolls.
     podAnnotations:
-      kalitsune.net/env-generation: "1"
+      kalitsune.net/env-generation: "2"
