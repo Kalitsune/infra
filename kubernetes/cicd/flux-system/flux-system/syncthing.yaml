@@ -1,0 +1,25 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: syncthing
+  namespace: flux-system
+spec:
+  dependsOn:
+    # The index PVC is local-path and the data PVC is truenas-nfs, so both
+    # provisioners must be up before this applies. envoy-gateway owns the
+    # `apps` Gateway the HTTPRoute and SecurityPolicy attach to.
+    - name: local-path-provisioner
+    - name: democratic-csi-nfs
+    - name: envoy-gateway
+  interval: 30m
+  path: ./kubernetes/apps/syncthing/syncthing
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m

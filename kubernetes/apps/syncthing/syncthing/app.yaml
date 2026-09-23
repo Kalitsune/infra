@@ -1,0 +1,195 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: syncthing-config
+  namespace: syncthing
+spec:
+  accessModes: [ReadWriteOnce]
+  # local-path, not the truenas-nfs default: Syncthing 2.x keeps its index in
+  # SQLite. A `syncthing generate` + first start in the 2.1.5 image produces
+  # index-v2/main.db, main.db-wal and main.db-shm -- WAL mode, which cannot be
+  # shared across processes on NFS and corrupts silently rather than erroring.
+  # See AGENT.md "When not to use NFS".
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: syncthing-data
+  namespace: syncthing
+spec:
+  accessModes: [ReadWriteMany]
+  # The synced files themselves are plain files, so the NFS default is right
+  # here -- only the index above is SQLite. Keeping them on separate volumes is
+  # what lets the data stay on TrueNAS (snapshots, ReadWriteMany) while the
+  # database gets the node-local disk it needs.
+  storageClassName: truenas-nfs
+  resources:
+    requests:
+      storage: 100Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: syncthing
+  namespace: syncthing
+spec:
+  replicas: 1
+  # SQLite index: never let two pods mount the volume at once. The default
+  # RollingUpdate has maxSurge 1, so an image bump would start the new pod
+  # while the old one still holds the database open. `replicas: 1` does not
+  # prevent that overlap; Recreate does.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: syncthing
+  template:
+    metadata:
+      labels:
+        app: syncthing
+    spec:
+      # Syncthing's own startup log says "should not run as a privileged or
+      # system user" -- the image defaults to uid 0. Verified at 2.1.5: as
+      # uid 1000 with a dropped capability set it generates its config, creates
+      # index-v2/main.db and serves /rest/noauth/health normally, and the
+      # warning disappears. This also satisfies the `restricted` PodSecurity
+      # profile, so no namespace label exemption is needed here.
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        runAsNonRoot: true
+        # local-path is block storage, so fsGroup applies and the config volume
+        # comes up owned by the right gid. The NFS data volume does NOT honour
+        # fsGroup -- if Syncthing cannot write there, that is an export
+        # ownership question on the TrueNAS side, not a manifest bug.
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: syncthing
+          image: syncthing/syncthing:2.1.5@sha256:84dcf202b0890f795c4c3899d35a5ac7369bb8b72b5c270078c50247da4ddeef
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: [ALL]
+          env:
+            # The image already sets both of these; they are repeated here so
+            # the paths the volumeMounts below rely on are visible in the
+            # manifest rather than implied by the entrypoint.
+            - name: STHOMEDIR
+              value: /var/syncthing/config
+            # Binding the GUI to the wildcard address also disables Syncthing's
+            # Host-header check for that listener -- verified against 2.1.5:
+            # a request with `Host: sync.lab.kalitsune.net` returns 200, not the
+            # "Host check error" page. So no insecureSkipHostcheck is needed.
+            - name: STGUIADDRESS
+              value: 0.0.0.0:8384
+          ports:
+            - name: gui
+              containerPort: 8384
+            - name: sync
+              containerPort: 22000
+              protocol: TCP
+            - name: sync-quic
+              containerPort: 22000
+              protocol: UDP
+          volumeMounts:
+            - name: config
+              mountPath: /var/syncthing/config
+            - name: data
+              mountPath: /var/syncthing/data
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              # Hashing is the memory-hungry phase and scales with the number of
+              # files, not their size. A limit is set because a runaway rescan
+              # on the shared worker node is the realistic failure here.
+              memory: 1Gi
+          livenessProbe:
+            httpGet:
+              path: /rest/noauth/health
+              port: gui
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /rest/noauth/health
+              port: gui
+            initialDelaySeconds: 5
+            periodSeconds: 10
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: syncthing-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: syncthing-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: syncthing
+  namespace: syncthing
+spec:
+  selector:
+    app: syncthing
+  ports:
+    - name: gui
+      port: 8384
+      targetPort: gui
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: syncthing
+  namespace: syncthing
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  # lab., not the apex: this is an admin surface with no login of its own.
+  # Covered by the existing *.lab.kalitsune.net CNAME, so no DNS change.
+  hostnames:
+    - sync.lab.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: syncthing
+          port: 8384
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: syncthing
+  namespace: syncthing
+spec:
+  # Syncthing's own GUI ships with NO authentication: a freshly generated
+  # config.xml has an <apikey> but no <user>/<password>, so anything that
+  # reaches port 8384 is already administrator. The gateway is therefore the
+  # only thing standing in front of it and this policy is load-bearing, not
+  # defence in depth.
+  #
+  # Targets the HTTPRoute rather than the Gateway so OIDC applies to this
+  # hostname alone -- same pattern as hermes/agents-dashboard.
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: syncthing
+  oidc:
+    provider:
+      issuer: https://id.kalitsune.net
+    clientID: b65247ed-5b97-4d56-bf37-4d4f703dd1e8
+    clientSecret:
+      name: syncthing-oidc
+    redirectURL: https://sync.lab.kalitsune.net/oauth2/callback
+    logoutPath: /logout
+    # Distinct cookie names so this flow cannot collide with the oauth2-proxy
+    # cookies other *.lab hosts set.
+    cookieNames:
+      accessToken: syncthing_token
+      idToken: syncthing_id
