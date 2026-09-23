@@ -38,11 +38,14 @@ metadata:
   #   gen 5: enable the Headroom token saver (compression sidecar)
   #   gen 6: authMode both -> oidc (operator has no password, wants SSO-only)
   #   gen 7: mint a key for honcho (Secret honcho/9router-honcho-key)
-  #   gen 8: mint a key for finnegan (FINNEGAN_9ROUTER_KEY in 9router-agent-keys)
-  name: 9router-provision-keys-8
+  #   gen 8: mint a key for tycho (ran before the tycho -> finnegan rename)
+  #   gen 9: mint FINNEGAN_9ROUTER_KEY — gen 8 had already completed when the
+  #          rename landed, and a completed Job is immutable, so the renamed
+  #          agent list never ran and finnegan's model calls 401'd
+  name: 9router-provision-keys-9
   namespace: 9router
   annotations:
-    kalitsune.net/provision-generation: "8"
+    kalitsune.net/provision-generation: "9"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.
