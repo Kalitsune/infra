@@ -133,6 +133,13 @@ spec:
         - session_search
         - skills
         - todo
+      mcp_servers:
+        dashboard-icons:
+          command: "npx"
+          args:
+            - "-y"
+            - "mcp-remote"
+            - "https://dashboardicons.com/api/mcp"
 
     # overwrite: true — config.yaml is rewritten from chart values on every pod
     # restart. Model and provider config is managed in git via this HelmRelease,
