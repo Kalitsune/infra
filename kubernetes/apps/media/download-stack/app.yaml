@@ -148,11 +148,11 @@ spec:
               done
               bz_conf="/bazarr/config/config.yaml"
               if [ -f "$bz_conf" ]; then
-                if grep -q "^  base_url:" "$bz_conf"; then
-                  sed -i "s|^  base_url:.*|  base_url: '/bazarr'|" "$bz_conf"
-                else
-                  sed -i "s|^general:|general:\n  base_url: '/bazarr'|" "$bz_conf"
-                fi
+                sed -i "/^general:/,/^[^ ]/ s|^  base_url:.*|  base_url: '/bazarr'|" "$bz_conf"
+                sed -i "/^radarr:/,/^[^ ]/ s|^  base_url:.*|  base_url: '/radarr'|" "$bz_conf"
+                sed -i "/^sonarr:/,/^[^ ]/ s|^  base_url:.*|  base_url: '/sonarr'|" "$bz_conf"
+                sed -i "/^subsarr:/,/^[^ ]/ s|^  base_url:.*|  base_url: ''|" "$bz_conf"
+                sed -i "/^subsdump:/,/^[^ ]/ s|^  base_url:.*|  base_url: ''|" "$bz_conf"
               fi
           volumeMounts:
             - name: radarr-config
