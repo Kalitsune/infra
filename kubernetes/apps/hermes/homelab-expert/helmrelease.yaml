@@ -311,7 +311,7 @@ spec:
       - name: HERMES_DASHBOARD_HOST
         value: "127.0.0.1"
       - name: HERMES_DASHBOARD_PUBLIC_URL
-        value: "https://homelab-expert.hermes.kalitsune.net"
+        value: "https://hale.agents.kalitsune.net"
       - name: HERMES_DASHBOARD_OIDC_ISSUER
         value: "https://id.kalitsune.net"
       - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
