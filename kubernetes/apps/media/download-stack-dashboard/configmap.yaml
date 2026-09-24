@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: media-dashboard-html
+  name: download-stack-dashboard-html
   namespace: media
 data:
   # Served verbatim by Envoy as a direct response -- there is no pod, no nginx
@@ -27,7 +27,7 @@ data:
   # selfhst/icons ships 0.5-12 kB per SVG, which blows the 4096-byte budget on
   # its own. Stroke attributes live in the `svg` CSS rule so each path is bare.
   response.body: |
-    <!DOCTYPE html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Media</title><style>
+    <!DOCTYPE html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Download Stack</title><style>
     :root{--bg:#1C1410;--tx:#F0E1D3;--sf:#2A1F19;--ac:#C77B51;--bt:#3A2B22;--bd:#5C4636;--mt:#B89A82}
     *{box-sizing:border-box}
     body{background:var(--bg);color:var(--tx);font:16px/1.5 system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;padding:2rem}
@@ -36,18 +36,20 @@ data:
     p{color:var(--mt);margin:.25rem 0 1.5rem;font-size:.85rem}
     a{display:flex;gap:.9rem;align-items:center;background:var(--bt);color:var(--tx);text-decoration:none;padding:.8rem 1rem;border:1px solid var(--bd);border-radius:12px;margin-bottom:.75rem;transition:.15s}
     a:hover{background:var(--ac);color:var(--bg);border-color:var(--ac)}
-    a:last-of-type{margin-bottom:0}
     svg{width:1.5rem;height:1.5rem;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
     b{display:block}
     i{font-style:normal;color:var(--mt);font-size:.8rem}
     a:hover i{color:var(--bg)}
+    .o{justify-content:center;background:none;border:0;color:var(--mt);font-size:.8rem;margin:1rem 0 0;padding:.3rem}
+    .o:hover{background:none;color:var(--ac)}
     </style>
     <div class="c">
-    <h1>Media</h1><p>download stack &middot; kalitsune.net</p>
+    <h1>Download Stack</h1><p>media automation &middot; kalitsune.net</p>
     <a href="https://torrent.lab.kalitsune.net"><svg viewBox="0 0 24 24"><path d="M12 3v10m0 0 4-4m-4 4-4-4M4 17v3h16v-3"/></svg><span><b>qBittorrent</b><i>Torrent client &middot; via Mullvad</i></span></a>
     <a href="https://radarr.lab.kalitsune.net"><svg viewBox="0 0 24 24"><path d="M4 4h16v16H4zM8 4v16M16 4v16M4 12h16"/></svg><span><b>Radarr</b><i>Movies</i></span></a>
     <a href="https://sonarr.lab.kalitsune.net"><svg viewBox="0 0 24 24"><path d="M3 8h18v12H3zM8 3l4 5 4-5"/></svg><span><b>Sonarr</b><i>TV series</i></span></a>
     <a href="https://prowlarr.lab.kalitsune.net"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="6"/><path d="m16 16 5 5"/></svg><span><b>Prowlarr</b><i>Indexers</i></span></a>
     <a href="https://bazarr.lab.kalitsune.net"><svg viewBox="0 0 24 24"><path d="M3 5h18v14H3zM6 15h5M13 15h5"/></svg><span><b>Bazarr</b><i>Subtitles</i></span></a>
     <a href="https://requests.watch.kalitsune.net"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg><span><b>Seerr</b><i>Requests</i></span></a>
+    <a class="o" href="/logout">Sign out</a>
     </div>

@@ -1,0 +1,8 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # The `media` namespace itself is created by ../namespace.yaml — nothing
+  # namespace-scoped is created here beyond the dashboard's own four objects.
+  - oidc-secret.yaml
+  - configmap.yaml
+  - httproute.yaml
