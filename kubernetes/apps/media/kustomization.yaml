@@ -7,4 +7,5 @@ resources:
   - jellyfin
   - seerr
   - download-stack
+  - dashboard
   - music-assistant

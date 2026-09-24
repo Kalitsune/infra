@@ -1,0 +1,58 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: media-dashboard
+  namespace: media
+spec:
+  directResponse:
+    contentType: text/html
+    statusCode: 200
+    body:
+      # ValueRef, not Inline: the page lives in configmap.yaml so it can be
+      # edited without touching routing. The referenced ConfigMap must expose
+      # the page under the key `response.body`.
+      type: ValueRef
+      valueRef:
+        group: ""
+        kind: ConfigMap
+        name: media-dashboard-html
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: media-dashboard
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    # `lab.` because this is an index of administrative surfaces, per AGENT.md.
+    # Covered by the existing *.lab.kalitsune.net CNAME and wildcard cert, so
+    # no DNS change is needed.
+    - media.lab.kalitsune.net
+  rules:
+    # No backendRefs anywhere in this route: Envoy answers every request itself.
+    # There is no Deployment, Service or container behind this hostname.
+    #
+    # Deliberately NOT gated by a SecurityPolicy, unlike the sibling
+    # agents.kalitsune.net dashboard. Gateway-native OIDC needs its
+    # redirectURL registered on the Pocket ID client, and
+    # https://media.lab.kalitsune.net/oauth2/callback is not registered on the
+    # download-stack client (verified: the IdP answers "The redirect_uri ...
+    # is not registered for this client"). Registering it is a UI action only
+    # the operator can perform, so gating this page is a follow-up commit.
+    #
+    # The page itself carries no data: every link target enforces OIDC plus
+    # group `app-media-admin` at its own oauth2-proxy, and the hostnames are
+    # already guessable behind the *.lab wildcard.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: media-dashboard
