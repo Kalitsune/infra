@@ -1,0 +1,20 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: metal
+  namespace: flux-system
+spec:
+  dependsOn:
+    - name: envoy-gateway
+  interval: 30m
+  path: ./kubernetes/apps/metal/metal
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m
