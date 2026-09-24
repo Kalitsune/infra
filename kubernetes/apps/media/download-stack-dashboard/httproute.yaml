@@ -8,9 +8,6 @@ spec:
     contentType: text/html
     statusCode: 200
     body:
-      # ValueRef, not Inline: the page lives in configmap.yaml so it can be
-      # edited without touching routing. The referenced ConfigMap must expose
-      # the page under the key `response.body`.
       type: ValueRef
       valueRef:
         group: ""
@@ -27,17 +24,49 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    # `lab.` because this is an index of administrative surfaces, per AGENT.md.
-    # Covered by the existing *.lab.kalitsune.net CNAME and wildcard cert, so
-    # no DNS change is needed.
     - download-stack.lab.kalitsune.net
   rules:
-    # No backendRefs anywhere in this route: Envoy answers every request itself.
-    # There is no Deployment, Service or container behind this hostname.
-    #
-    # The OIDC callback path (/oauth2/callback) and the logout path (/logout)
-    # are consumed by the OAuth2 filter *before* routing, so they never reach
-    # this rule even though it matches "/".
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /radarr
+      backendRefs:
+        - name: download-stack
+          port: 7878
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /sonarr
+      backendRefs:
+        - name: download-stack
+          port: 8989
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /prowlarr
+      backendRefs:
+        - name: download-stack
+          port: 9696
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /bazarr
+      backendRefs:
+        - name: download-stack
+          port: 6767
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /torrent
+      filters:
+        - type: URLRewrite
+          urlRewrite:
+            path:
+              type: ReplacePrefixMatch
+              replacePrefixMatch: /
+      backendRefs:
+        - name: download-stack
+          port: 8080
     - matches:
         - path:
             type: PathPrefix
@@ -55,9 +84,6 @@ metadata:
   name: download-stack-dashboard
   namespace: media
 spec:
-  # Targets the HTTPRoute, not the Gateway: a Gateway-level policy would put
-  # OIDC in front of every host on `apps`, including the sibling *arr hosts
-  # that already authenticate themselves through oauth2-proxy.
   targetRefs:
     - group: gateway.networking.k8s.io
       kind: HTTPRoute
@@ -65,20 +91,11 @@ spec:
   oidc:
     provider:
       issuer: https://id.kalitsune.net
-    # Same Pocket ID client as the per-app oauth2-proxy containers
-    # ("Download Stack", group-restricted to app-media-admin), with this
-    # dashboard's callback added to its callbackURLs.
     clientID: b076b66b-a080-4e7f-8154-80b9028337d8
     clientSecret:
-      # Envoy Gateway only ever reads the key `client-secret`, which is why
-      # this is a second Secret rather than a key added to
-      # oauth2-proxy-secret-download: that file is SOPS-sealed and cannot gain
-      # a key without the private age key. Same value, different key name.
       name: download-stack-dashboard-oidc
     redirectURL: https://download-stack.lab.kalitsune.net/oauth2/callback
     logoutPath: /logout
-    # Explicit so this flow cannot collide with the oauth2-proxy cookies the
-    # per-app hosts set on their own *.lab.kalitsune.net subdomains.
     cookieNames:
       accessToken: download_stack_token
       idToken: download_stack_id

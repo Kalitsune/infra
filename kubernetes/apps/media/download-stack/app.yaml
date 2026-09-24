@@ -118,7 +118,7 @@ spec:
               awk '
                 /^\[Preferences\]/ && !seen {
                   print
-                  print "WebUI\\AuthSubnetWhitelist=10.244.0.0/16"
+                  print "WebUI\\AuthSubnetWhitelist=10.0.0.0/8, 192.168.0.0/16, 172.16.0.0/12, 127.0.0.1"
                   print "WebUI\\AuthSubnetWhitelistEnabled=true"
                   print "WebUI\\LocalHostAuth=false"
                   seen = 1
@@ -132,6 +132,37 @@ spec:
           volumeMounts:
             - name: qbittorrent-config
               mountPath: /config
+        - name: arr-auth-config
+          image: busybox:latest
+          command:
+            - /bin/sh
+            - -c
+            - |
+              set -eu
+              for app in radarr sonarr prowlarr; do
+                conf="/$app/config.xml"
+                if [ -f "$conf" ]; then
+                  grep -q "<UrlBase>" "$conf" || sed -i 's|</Config>|  <UrlBase></UrlBase>\n</Config>|' "$conf"
+                  sed -i "s|<UrlBase>.*</UrlBase>|<UrlBase>/$app</UrlBase>|" "$conf"
+                fi
+              done
+              bz_conf="/bazarr/config/config.yaml"
+              if [ -f "$bz_conf" ]; then
+                if grep -q "^  base_url:" "$bz_conf"; then
+                  sed -i "s|^  base_url:.*|  base_url: '/bazarr'|" "$bz_conf"
+                else
+                  sed -i "s|^general:|general:\n  base_url: '/bazarr'|" "$bz_conf"
+                fi
+              fi
+          volumeMounts:
+            - name: radarr-config
+              mountPath: /radarr
+            - name: sonarr-config
+              mountPath: /sonarr
+            - name: prowlarr-config
+              mountPath: /prowlarr
+            - name: bazarr-config
+              mountPath: /bazarr
       containers:
         - name: qbittorrent
           image: lscr.io/linuxserver/qbittorrent:latest
@@ -369,321 +400,3 @@ spec:
     - name: bazarr
       port: 6767
       targetPort: 6767
----
-# The auth proxies live OUTSIDE the VPN pod on purpose.
-#
-# When they ran as sidecars of download-stack they inherited gluetun's network
-# namespace, so their OIDC discovery call to id.kalitsune.net was forced through
-# the tunnel and failed with:
-#   "lookup id.kalitsune.net on 127.0.0.1:53: server misbehaving"
-# (127.0.0.1:53 is gluetun's own DNS-over-TLS resolver). Even with a healthy
-# tunnel this would mean hairpinning back to the home network from a Swiss exit
-# node to reach an identity provider a few metres away.
-#
-# Out here they use normal cluster DNS, and reach the apps over the ClusterIP
-# Service above. Torrent traffic stays in the tunnel; only auth leaves it.
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: media-auth-proxy
-  namespace: media
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: media-auth-proxy
-  template:
-    metadata:
-      labels:
-        app: media-auth-proxy
-    spec:
-      containers:
-        - name: radarr
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
-          args:
-            - --provider=oidc
-            - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://radarr.lab.kalitsune.net/oauth2/callback
-            - --upstream=http://download-stack.media.svc.cluster.local:7878
-            - --http-address=0.0.0.0:4181
-            - --email-domain=*
-            - --cookie-secure=true
-            - --cookie-name=_oauth2_proxy_radarr
-            - --session-store-type=cookie
-            - --banner=-
-            - --skip-provider-button=true
-            - --code-challenge-method=S256
-            # The *arr stack is admin-only. Without --allowed-group any
-            # authenticated Pocket ID user would get in; the groups scope must
-            # be requested explicitly or the claim is absent and this check
-            # silently passes nobody.
-            - --scope=openid email profile groups
-            - --oidc-groups-claim=groups
-            - --allowed-group=app-media-admin
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientId
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientSecret
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: cookieSecret
-          ports:
-            - containerPort: 4181
-        - name: sonarr
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
-          args:
-            - --provider=oidc
-            - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://sonarr.lab.kalitsune.net/oauth2/callback
-            - --upstream=http://download-stack.media.svc.cluster.local:8989
-            - --http-address=0.0.0.0:4182
-            - --email-domain=*
-            - --cookie-secure=true
-            - --cookie-name=_oauth2_proxy_sonarr
-            - --session-store-type=cookie
-            - --banner=-
-            - --skip-provider-button=true
-            - --code-challenge-method=S256
-            - --scope=openid email profile groups
-            - --oidc-groups-claim=groups
-            - --allowed-group=app-media-admin
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientId
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientSecret
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: cookieSecret
-          ports:
-            - containerPort: 4182
-        - name: prowlarr
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
-          args:
-            - --provider=oidc
-            - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://prowlarr.lab.kalitsune.net/oauth2/callback
-            - --upstream=http://download-stack.media.svc.cluster.local:9696
-            - --http-address=0.0.0.0:4183
-            - --email-domain=*
-            - --cookie-secure=true
-            - --cookie-name=_oauth2_proxy_prowlarr
-            - --session-store-type=cookie
-            - --banner=-
-            - --skip-provider-button=true
-            - --code-challenge-method=S256
-            - --scope=openid email profile groups
-            - --oidc-groups-claim=groups
-            - --allowed-group=app-media-admin
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientId
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientSecret
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: cookieSecret
-          ports:
-            - containerPort: 4183
-        - name: bazarr
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
-          args:
-            - --provider=oidc
-            - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://bazarr.lab.kalitsune.net/oauth2/callback
-            - --upstream=http://download-stack.media.svc.cluster.local:6767
-            - --http-address=0.0.0.0:4184
-            - --email-domain=*
-            - --cookie-secure=true
-            - --cookie-name=_oauth2_proxy_bazarr
-            - --session-store-type=cookie
-            - --banner=-
-            - --skip-provider-button=true
-            - --code-challenge-method=S256
-            - --scope=openid email profile groups
-            - --oidc-groups-claim=groups
-            - --allowed-group=app-media-admin
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientId
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientSecret
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: cookieSecret
-          ports:
-            - containerPort: 4184
-        - name: qbittorrent
-          image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
-          args:
-            - --provider=oidc
-            - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://torrent.lab.kalitsune.net/oauth2/callback
-            - --upstream=http://download-stack.media.svc.cluster.local:8080
-            - --http-address=0.0.0.0:4185
-            - --email-domain=*
-            - --cookie-secure=true
-            - --cookie-name=_oauth2_proxy_qbittorrent
-            - --session-store-type=cookie
-            - --banner=-
-            - --skip-provider-button=true
-            - --code-challenge-method=S256
-            - --scope=openid email profile groups
-            - --oidc-groups-claim=groups
-            - --allowed-group=app-media-admin
-          env:
-            - name: OAUTH2_PROXY_CLIENT_ID
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientId
-            - name: OAUTH2_PROXY_CLIENT_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: clientSecret
-            - name: OAUTH2_PROXY_COOKIE_SECRET
-              valueFrom:
-                secretKeyRef:
-                  name: oauth2-proxy-secret-download
-                  key: cookieSecret
-          ports:
-            - containerPort: 4185
----
-apiVersion: v1
-kind: Service
-metadata:
-  name: media-auth-proxy
-  namespace: media
-spec:
-  selector:
-    app: media-auth-proxy
-  ports:
-    - name: proxy-radarr
-      port: 4181
-      targetPort: 4181
-    - name: proxy-sonarr
-      port: 4182
-      targetPort: 4182
-    - name: proxy-prowlarr
-      port: 4183
-      targetPort: 4183
-    - name: proxy-bazarr
-      port: 4184
-      targetPort: 4184
-    - name: proxy-qbit
-      port: 4185
-      targetPort: 4185
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: radarr
-  namespace: media
-spec:
-  parentRefs:
-    - name: apps
-      namespace: envoy-gateway-system
-  hostnames:
-    - radarr.lab.kalitsune.net
-  rules:
-    - backendRefs:
-        - name: media-auth-proxy
-          port: 4181
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: sonarr
-  namespace: media
-spec:
-  parentRefs:
-    - name: apps
-      namespace: envoy-gateway-system
-  hostnames:
-    - sonarr.lab.kalitsune.net
-  rules:
-    - backendRefs:
-        - name: media-auth-proxy
-          port: 4182
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: prowlarr
-  namespace: media
-spec:
-  parentRefs:
-    - name: apps
-      namespace: envoy-gateway-system
-  hostnames:
-    - prowlarr.lab.kalitsune.net
-  rules:
-    - backendRefs:
-        - name: media-auth-proxy
-          port: 4183
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: bazarr
-  namespace: media
-spec:
-  parentRefs:
-    - name: apps
-      namespace: envoy-gateway-system
-  hostnames:
-    - bazarr.lab.kalitsune.net
-  rules:
-    - backendRefs:
-        - name: media-auth-proxy
-          port: 4184
----
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: torrent
-  namespace: media
-spec:
-  parentRefs:
-    - name: apps
-      namespace: envoy-gateway-system
-  hostnames:
-    - torrent.lab.kalitsune.net
-  rules:
-    - backendRefs:
-        - name: media-auth-proxy
-          port: 4185
