@@ -81,3 +81,18 @@ Neither was done here because neither was asked for. Pick deliberately.
   "Host check error" page. No `insecureSkipHostcheck` is set.
 - NFS ignores `fsGroup`. If Syncthing cannot write to `/var/syncthing/data`,
   that is an export ownership question on TrueNAS, not a manifest bug.
+- `workingDir: /var/syncthing/data` is load-bearing. A folder accepted from a
+  peer is stored with its path set to the bare label (`PKMS`) unless
+  `<defaults><folder path>` is set, and Syncthing resolves a relative folder
+  path against its working directory — `/` in this image. Without `workingDir`
+  it tries `mkdir /PKMS` as uid 1000 and the folder never starts:
+
+      Failed to create folder root directory (folder.label=PKMS
+      error="mkdir /PKMS: permission denied")
+      Failed initial scan (error="folder path missing" folder.label=PKMS)
+
+  Setting it here rather than a path per folder means every future accepted
+  share lands under the data volume automatically.
+- `pull: no such file` on a folder whose root exists is **not** a cluster
+  problem: it is the remote device answering that it does not have the block it
+  advertised. Fix it by rescanning on that device, not here.
