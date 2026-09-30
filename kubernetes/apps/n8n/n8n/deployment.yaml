@@ -1,0 +1,132 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  replicas: 1
+  # SQLite singleton. RollingUpdate's default maxSurge:1 would start the new
+  # pod while the old one still holds the database open — two writers on one
+  # file, which SQLite answers with corruption rather than an error.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: n8n
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: n8n
+    spec:
+      securityContext:
+        # The image already runs as `node` (USER node, uid 1000 — verified by
+        # running it: `uid=1000 gid=1000 user=node`). fsGroup is what makes the
+        # local-path volume writable by that uid.
+        runAsNonRoot: true
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: n8n
+          # Tag documents intent, digest enforces it. Bump BOTH together.
+          # Digest is the multi-arch index (linux/amd64 + linux/arm64).
+          image: docker.io/n8nio/n8n:2.41.4@sha256:3cd1d3a03f5e059a0757d8c95823ff09ef61d3b6bf7fcb4ac3ac5fd5303b6c6d
+          # Nothing here needs privileges. PSA only warns at `restricted` on
+          # this cluster, but the image drops to an unprivileged user by
+          # itself, so satisfying the level costs nothing.
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # Public origin. n8n builds editor links, OAuth2 callback URLs for
+            # credentials, and webhook URLs from these — without them it emits
+            # http://localhost:5678 into third-party OAuth consoles.
+            - name: N8N_EDITOR_BASE_URL
+              value: https://n8n.kalitsune.net
+            - name: N8N_WEBHOOK_URL
+              value: https://n8n.kalitsune.net
+            - name: N8N_HOST
+              value: n8n.kalitsune.net
+            - name: N8N_PROTOCOL
+              value: https
+            # TLS terminates at Envoy, so the app itself speaks plain HTTP.
+            # N8N_PROTOCOL above only affects generated URLs, not the listener.
+            - name: N8N_PORT
+              value: "5678"
+            # Exactly one reverse proxy (the Gateway) in front. This is what
+            # makes Express trust X-Forwarded-For/Proto, which the push-channel
+            # origin validator reads to reconstruct the expected origin
+            # (packages/cli/src/push/origin-validator.ts). Wrong value = the
+            # editor's live websocket is refused with "Invalid origin!".
+            - name: N8N_PROXY_HOPS
+              value: "1"
+            - name: GENERIC_TIMEZONE
+              value: Europe/Paris
+            - name: TZ
+              value: Europe/Paris
+            # Opt out of upstream telemetry (defaults true, PostHog +
+            # telemetry.n8n.io) and the devtools recruitment banner.
+            - name: N8N_DIAGNOSTICS_ENABLED
+              value: "false"
+            - name: N8N_HIRING_BANNER_ENABLED
+              value: "false"
+            # Silences the startup warning about the settings file's
+            # permissions on a volume n8n does not own the mode of.
+            - name: N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS
+              value: "true"
+          ports:
+            - name: http
+              containerPort: 5678
+          volumeMounts:
+            - name: data
+              mountPath: /home/node/.n8n
+          # /healthz is unauthenticated and does NOT touch the database;
+          # /healthz/readiness additionally requires the DB connected, the
+          # migrations run and the server fully booted, returning 503 until
+          # then (packages/cli/src/abstract-server.ts).
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /healthz/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              # Node heap plus workflow execution in-process (task runners are
+              # `internal` by default). No CPU limit: bursty workflow runs
+              # should not be throttled.
+              memory: 2Gi
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: n8n-data
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  selector:
+    app.kubernetes.io/name: n8n
+  ports:
+    - name: http
+      port: 5678
+      targetPort: http

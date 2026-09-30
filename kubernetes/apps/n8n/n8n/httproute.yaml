@@ -1,0 +1,35 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: n8n
+  namespace: n8n
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    # The apex, not `lab.`, and that is a deliberate exposure decision rather
+    # than a naming one — AGENT.md requires the reasoning to live here.
+    #
+    # n8n's function is receiving webhooks: `/webhook/*` and `/form/*` are
+    # called by GitHub, Stripe, Discord and anything else a workflow listens
+    # to. A third party cannot complete an interactive login, so a host that
+    # is not publicly reachable is a host where the product does not work.
+    # That is the same "public exposure IS the function" test the Matrix
+    # homeserver passes, not a convenience.
+    #
+    # What narrows the surface, since the hostname enforces nothing:
+    #   - No OIDC SecurityPolicy on this route ON PURPOSE. Gateway-native OIDC
+    #     gates every path including /webhook, which would break the only
+    #     reason this host is public. n8n authenticates the editor itself
+    #     (owner account, bcrypt, MFA available) — see the README.
+    #   - Public user registration does not exist in n8n: accounts are created
+    #     by the owner from the members page. The one open door is /setup,
+    #     which mints the first owner and stays open until claimed. Claim it
+    #     immediately; see the README's "first boot" section.
+    #   - A webhook path only responds once a workflow is activated on it;
+    #     unknown paths 404.
+  rules:
+    - backendRefs:
+        - name: n8n
+          port: 5678

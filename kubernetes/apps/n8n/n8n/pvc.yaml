@@ -1,0 +1,25 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: n8n-data
+  namespace: n8n
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Deliberately NOT truenas-nfs. Two reasons, both from the upstream source:
+  #
+  #  1. DB_TYPE defaults to `sqlite` (packages/@n8n/config/src/configs/
+  #     database.config.ts), so all workflow and execution state is an embedded
+  #     SQLite file under /home/node/.n8n. SQLite coordinates writers with
+  #     fcntl() locks that NFS does not reliably provide — the failure mode is
+  #     silent corruption, not an error. See the storage section of AGENT.md.
+  #
+  #  2. This volume also holds the credentials ENCRYPTION KEY. n8n generates it
+  #     on first boot (`randomBytes(24)` in packages/core/src/instance-settings/
+  #     instance-settings.ts) and writes it to /home/node/.n8n/config; it is not
+  #     supplied via env here. Losing this volume does not just lose workflows,
+  #     it orphans every stored credential — they cannot be decrypted again.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
