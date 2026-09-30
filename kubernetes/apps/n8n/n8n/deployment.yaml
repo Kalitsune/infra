@@ -17,6 +17,8 @@ spec:
     metadata:
       labels:
         app.kubernetes.io/name: n8n
+      annotations:
+        env-generation: "1"
     spec:
       securityContext:
         # The image already runs as `node` (USER node, uid 1000 — verified by
@@ -52,8 +54,6 @@ spec:
               value: /assets/oidc-frontend-hook.js
             - name: OIDC_ISSUER_URL
               value: https://id.kalitsune.net
-            - name: OIDC_CLIENT_ID
-              value: n8n
             - name: OIDC_REDIRECT_URI
               value: https://n8n.kalitsune.net/auth/oidc/callback
             # Public origin. n8n builds editor links, OAuth2 callback URLs for
