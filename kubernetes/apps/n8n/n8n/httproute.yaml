@@ -29,6 +29,7 @@ spec:
     #     immediately; see the README's "first boot" section.
     #   - A webhook path only responds once a workflow is activated on it;
     #     unknown paths 404.
+    - n8n.kalitsune.net
   rules:
     - backendRefs:
         - name: n8n
