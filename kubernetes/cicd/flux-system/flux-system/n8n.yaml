@@ -10,7 +10,13 @@ spec:
   sourceRef:
     kind: GitRepository
     name: flux-system
-  # No `decryption` block: this app ships no SOPS secret. n8n generates and
-  # persists its own credentials encryption key on the data volume.
+  # secret-oidc.yaml is SOPS-encrypted. Without this block Flux applies the
+  # ciphertext verbatim: the Secret's value becomes the literal string
+  # "ENC[AES256_GCM,...]" and Pocket ID answers "client does not exist".
+  # (n8n still generates its own credentials encryption key on the volume.)
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   wait: true
   timeout: 5m
