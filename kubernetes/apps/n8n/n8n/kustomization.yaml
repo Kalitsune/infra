@@ -1,6 +1,10 @@
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
-namespace: n8n
+# No global `namespace:` here. Every manifest below already declares its own,
+# and the transformer would also rewrite metadata.namespace INSIDE the
+# SOPS-encrypted secret — replacing the encrypted value with plaintext "n8n",
+# which invalidates the MAC and makes kustomize-controller fail decryption.
+# The generated ConfigMap gets its namespace from the generator instead.
 resources:
   - namespace.yaml
   - pvc.yaml
@@ -10,5 +14,6 @@ resources:
 
 configMapGenerator:
   - name: n8n-oidc-hook
+    namespace: n8n
     files:
       - hooks.js
