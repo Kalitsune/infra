@@ -5,3 +5,9 @@ resources:
   - pvc.yaml
   - deployment.yaml
   - httproute.yaml
+  - secret-oidc.yaml
+
+configMapGenerator:
+  - name: n8n-oidc-hook
+    files:
+      - hooks.js

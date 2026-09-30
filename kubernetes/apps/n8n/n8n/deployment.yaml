@@ -40,7 +40,22 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ["ALL"]
+          envFrom:
+            - secretRef:
+                name: n8n-oidc
           env:
+            - name: EXTERNAL_HOOK_FILES
+              value: /assets/hooks.js
+            - name: N8N_ADDITIONAL_NON_UI_ROUTES
+              value: auth
+            - name: EXTERNAL_FRONTEND_HOOKS_URLS
+              value: /assets/oidc-frontend-hook.js
+            - name: OIDC_ISSUER_URL
+              value: https://id.kalitsune.net
+            - name: OIDC_CLIENT_ID
+              value: n8n
+            - name: OIDC_REDIRECT_URI
+              value: https://n8n.kalitsune.net/auth/oidc/callback
             # Public origin. n8n builds editor links, OAuth2 callback URLs for
             # credentials, and webhook URLs from these — without them it emits
             # http://localhost:5678 into third-party OAuth consoles.
@@ -83,6 +98,9 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /home/node/.n8n
+            - name: hook
+              mountPath: /assets/hooks.js
+              subPath: hooks.js
           # /healthz is unauthenticated and does NOT touch the database;
           # /healthz/readiness additionally requires the DB connected, the
           # migrations run and the server fully booted, returning 503 until
@@ -117,6 +135,9 @@ spec:
         - name: data
           persistentVolumeClaim:
             claimName: n8n-data
+        - name: hook
+          configMap:
+            name: n8n-oidc-hook
 ---
 apiVersion: v1
 kind: Service
