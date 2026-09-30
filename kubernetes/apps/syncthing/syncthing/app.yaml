@@ -102,6 +102,16 @@ spec:
       containers:
         - name: syncthing
           image: syncthing/syncthing:2.1.5@sha256:84dcf202b0890f795c4c3899d35a5ac7369bb8b72b5c270078c50247da4ddeef
+          # Folder paths accepted from a peer are stored as the bare label
+          # ("PKMS", "configs") when the config has no <defaults><folder path>,
+          # and Syncthing resolves a relative folder path against its working
+          # directory -- which is `/` in this image. Verified: without this the
+          # log is `mkdir /PKMS: permission denied` followed by
+          # `Failed initial scan (error="folder path missing")`, because uid
+          # 1000 cannot write the container root. Anchoring the CWD to the data
+          # volume makes those paths mean /var/syncthing/data/<label> and fixes
+          # every future accepted share the same way.
+          workingDir: /var/syncthing/data
           securityContext:
             runAsNonRoot: true
             allowPrivilegeEscalation: false
