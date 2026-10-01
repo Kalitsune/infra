@@ -18,7 +18,15 @@ spec:
       labels:
         app.kubernetes.io/name: n8n
       annotations:
-        env-generation: "2"
+        # Bump to force a pod roll. Generation 3 exists because `envFrom` is
+        # resolved at pod creation: the first roll of generation 2 started
+        # three seconds BEFORE the provisioning Job published
+        # 9router-n8n-overwrite, and `optional: true` means a missing Secret
+        # is skipped silently rather than holding the pod in
+        # CreateContainerConfigError. The env was simply absent with no error
+        # anywhere. If that Secret is ever re-minted into a fresh namespace,
+        # expect to bump this once more after the Job completes.
+        env-generation: "3"
     spec:
       securityContext:
         # The image already runs as `node` (USER node, uid 1000 — verified by
