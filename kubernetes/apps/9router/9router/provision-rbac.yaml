@@ -48,6 +48,39 @@ roleRef:
   name: 9router-key-writer
   apiGroup: rbac.authorization.k8s.io
 ---
+# n8n consumes 9Router through CREDENTIALS_OVERWRITE_DATA, which n8n reads from
+# its own environment — so, as with Honcho, the value has to land in a Secret in
+# n8n's namespace. Same narrow shape: one named Secret, no list/watch, so this
+# identity cannot enumerate n8n's other secrets (which include its OIDC client
+# credentials).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: 9router-key-writer
+  namespace: n8n
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["9router-n8n-overwrite"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: 9router-key-writer
+  namespace: n8n
+subjects:
+  - kind: ServiceAccount
+    name: 9router-provisioner
+    namespace: 9router
+roleRef:
+  kind: Role
+  name: 9router-key-writer
+  apiGroup: rbac.authorization.k8s.io
+---
 # Honcho consumes 9Router as its OpenAI-compatible LLM backend, so the same
 # Job mints it a key. Honcho's process reads LLM_OPENAI_API_KEY via envFrom,
 # which means the value has to land in a Secret in ITS namespace — hence a

@@ -83,6 +83,25 @@ in the dashboard, which persists a bcrypt hash into SQLite that then takes
 precedence. Rotating the Secret afterwards changes nothing. Change the password
 in the dashboard instead.
 
+## Provisioned consumer keys
+
+The Job in `provision-job.yaml` mints one API key per consumer, keyed by
+machineId so each can be revoked in the dashboard independently. Where each key
+lands:
+
+| machineId | Secret | Key |
+| --- | --- | --- |
+| `hermes`, `homelabexpert`, `finnegan`, `laptop` | `hermes/9router-agent-keys` | `*_9ROUTER_KEY` |
+| `honcho` | `honcho/9router-honcho-key` | `LLM_OPENAI_API_KEY` |
+| `n8n` | `n8n/9router-n8n-overwrite` | `CREDENTIALS_OVERWRITE_DATA` |
+
+n8n is the odd one: it has no "set the OpenAI base URL globally" env, so the
+key is wrapped in the JSON blob its credential-overwrite mechanism expects
+(`{"openAiApi": {"apiKey": …, "url": …}}`) rather than written bare. That is
+what the optional `wrap` field in `FOREIGN_SECRETS` is for. See
+`apps/n8n/n8n/README.md` — the overwrite is a global clamp on the credential
+type, not a per-credential default.
+
 ## Image pinning
 
 Pinned to `docker.io/decolua/9router:0.5.69` by digest.

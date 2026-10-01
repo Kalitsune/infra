@@ -68,11 +68,44 @@ data:
     // the literal variable name its process needs — not a *_9ROUTER_KEY
     // label. It is a separate machineId so revoking Honcho in the dashboard
     // cannot take the chat agents down with it.
+    //
+    // `wrap` is optional: when present the Secret holds the function's output
+    // instead of the bare key, for consumers that want the credential inside a
+    // larger blob.
     const FOREIGN_SECRETS = {
       honcho: {
         name: "9router-honcho-key",
         namespace: "honcho",
         key: "LLM_OPENAI_API_KEY",
+      },
+      // n8n has no "set the OpenAI base URL globally" env. What it has is
+      // CREDENTIALS_OVERWRITE_DATA: a JSON blob merged over every credential
+      // of a given type, server-side, with the overwritten fields hidden in
+      // the editor. So the value is not a key but a one-entry object keyed by
+      // the credential type name.
+      //
+      // Field names are those of the credential class itself
+      // (n8n-nodes-base/dist/credentials/OpenAiApi.credentials.js): `apiKey`
+      // and `url`. The LangChain chat node derives its baseURL from
+      // credentials.url, and its model dropdown calls <url>/models — which is
+      // how 9router's combos (high-effort, medium-effort, fast-af) show up in
+      // the picker without anything being hardcoded here.
+      //
+      // Consequence, accepted: this pins EVERY openAiApi credential in the
+      // instance to 9router. A second credential pointing at api.openai.com
+      // directly is no longer possible while this is set. That is the intent —
+      // 9router is the one egress for model traffic — but it is a global
+      // clamp, not a per-credential default.
+      n8n: {
+        name: "9router-n8n-overwrite",
+        namespace: "n8n",
+        key: "CREDENTIALS_OVERWRITE_DATA",
+        wrap: (key) => JSON.stringify({
+          openAiApi: {
+            apiKey: key,
+            url: "http://9router.9router.svc.cluster.local:20128/v1",
+          },
+        }),
       },
     };
 
@@ -152,7 +185,9 @@ data:
       console.log(`${agent}: wrote ${file} (${key.length} chars)`);
 
       if (FOREIGN_SECRETS[agent]) {
-        foreignData[agent] = Buffer.from(key, "utf8").toString("base64");
+        const wrap = FOREIGN_SECRETS[agent].wrap;
+        const value = wrap ? wrap(key) : key;
+        foreignData[agent] = Buffer.from(value, "utf8").toString("base64");
       } else {
         secretData[ENV_NAMES[agent] || `${agent.toUpperCase()}_9ROUTER_KEY`] =
           Buffer.from(key, "utf8").toString("base64");
