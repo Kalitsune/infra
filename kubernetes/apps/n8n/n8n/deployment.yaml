@@ -18,7 +18,7 @@ spec:
       labels:
         app.kubernetes.io/name: n8n
       annotations:
-        env-generation: "1"
+        env-generation: "2"
     spec:
       securityContext:
         # The image already runs as `node` (USER node, uid 1000 — verified by
@@ -45,6 +45,20 @@ spec:
           envFrom:
             - secretRef:
                 name: n8n-oidc
+            # CREDENTIALS_OVERWRITE_DATA: pins every openAiApi credential to
+            # 9Router (base URL + minted API key), server-side and hidden from
+            # the editor. Minted by the provisioning Job in apps/9router, not
+            # by Flux — optional so a first deploy does not block on the Job.
+            # See this app's README for the consequence of the global clamp.
+            #
+            # CREDENTIALS_OVERWRITE_PERSISTENCE is deliberately left at its
+            # default (false): the overwrite is read once at boot into an
+            # in-memory map, and persistence only exists to propagate it to
+            # queue-mode workers. This instance is a single process, so
+            # enabling it would write the key into SQLite for nothing.
+            - secretRef:
+                name: 9router-n8n-overwrite
+                optional: true
           env:
             - name: EXTERNAL_HOOK_FILES
               value: /assets/hooks.js

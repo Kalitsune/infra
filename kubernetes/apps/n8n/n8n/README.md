@@ -31,6 +31,39 @@ If SSO is wanted later, the shape is a second HTTPRoute rule: the editor and
 `/rest` behind oauth2-proxy, `/webhook`, `/webhook-test`, `/form`, `/form-waiting`
 and `/healthz` direct. That costs a proxy Deployment and a double login.
 
+## Models: 9Router, not OpenAI directly
+
+The OpenAI credential type is clamped to the in-cluster 9Router instance by
+`CREDENTIALS_OVERWRITE_DATA`, supplied through the Secret
+`9router-n8n-overwrite` (`envFrom`, `optional: true`):
+
+    {"openAiApi": {"apiKey": "sk-n8n-…",
+                   "url": "http://9router.9router.svc.cluster.local:20128/v1"}}
+
+Credential overwrites are merged server-side over **every** `openAiApi`
+credential and the overwritten fields are hidden in the editor, so an OpenAI
+credential is created empty — name it, save it, it works. The model dropdown on
+the OpenAI Chat Model node calls `<url>/models`, which is 9Router's catalogue:
+the `high-effort`, `medium-effort` and `fast-af` combos (effort dials) plus the
+individual upstream models. Pick one per node.
+
+Three consequences, all deliberate:
+
+- **This is a global clamp, not a default.** While the Secret is present, a
+  second OpenAI credential pointing at `api.openai.com` is impossible — the
+  overwrite wins. Routing all model traffic through 9Router is the intent.
+- The Secret is **not** in git. It is minted by the provisioning Job in
+  `apps/9router` against its own `n8n` machineId, so the key is revocable from
+  the 9Router dashboard without touching the agents. To re-run it, bump the
+  generation in `apps/9router/9router/provision-job.yaml`.
+- The ClusterIP URL bypasses oauth2-proxy, which is correct: 9Router's `/v1`
+  has its own API-key gate (`401 Missing API key` without one), and an OIDC
+  browser redirect is meaningless to an API client.
+
+`CREDENTIALS_OVERWRITE_PERSISTENCE` is left off. It only exists to propagate
+overwrites to queue-mode workers; this is a single process, so enabling it would
+copy the key into SQLite for no gain.
+
 ## Storage — do not move this to NFS
 
 `storageClassName: local-path`, for two independent reasons:
