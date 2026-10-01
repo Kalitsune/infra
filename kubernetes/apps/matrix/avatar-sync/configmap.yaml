@@ -36,6 +36,8 @@ data:
 
     import psycopg2
     import requests
+    from requests.adapters import HTTPAdapter
+    from urllib3.util import Retry
 
     SYNAPSE = os.environ["SYNAPSE_URL"]
     SERVER = os.environ["MATRIX_SERVER_NAME"]
@@ -50,6 +52,37 @@ data:
         "https://id.kalitsune.net. Change it there and it will sync back "
         "here within the hour."
     )
+
+    # Every HTTP call goes through this session, so a 429 is retried instead of
+    # failing the user. HAProxy in front of Synapse rewrites 503 into a
+    # synthetic 429 ("Server is unavailable", see the chart's 429.http) when no
+    # backend is available -- which is exactly what a Synapse restart mid-job
+    # looks like, and both historical job failures land in a chart
+    # upgrade/rollback window. That is a wait-and-retry condition, not an
+    # error: the three pods of the 2026-09-30 run each died in 4-7s, far too
+    # fast to outlast the restart on their own.
+    #
+    # urllib3 >=2 returns 0 backoff for the first retry (get_backoff_time
+    # short-circuits on consecutive_errors_len <= 1), so backoff_factor=2 and
+    # total=5 sleep 0+4+8+16+32 = 60s -- deliberately matched to HAProxy's
+    # `timeout queue 60s`, and still inside the hourly slot even before the
+    # CronJob's own backoffLimit adds two more pods.
+    #
+    # Only idempotent methods are retried: GET and PUT are in urllib3's
+    # DEFAULT_ALLOWED_METHODS, the media POST is not, so a half-finished upload
+    # is never replayed into orphaned media. A 404 is NOT in the forcelist,
+    # because current_avatar_bytes() needs to see it to detect purged media.
+    http = requests.Session()
+    _retry = HTTPAdapter(
+        max_retries=Retry(
+            total=5,
+            backoff_factor=2,
+            status_forcelist=(429, 500, 502, 503, 504),
+        )
+    )
+    # Both schemes: a later switch to https:// must not silently drop retries.
+    http.mount("http://", _retry)
+    http.mount("https://", _retry)
 
 
     def linked_users():
@@ -75,7 +108,7 @@ data:
 
     def current_avatar_bytes(user_id):
         """Bytes of the user's current avatar, or None if unset/remote/purged."""
-        r = requests.get(
+        r = http.get(
             f"{SYNAPSE}/_matrix/client/v3/profile/{user_id}/avatar_url",
             headers=AUTH,
             timeout=TIMEOUT,
@@ -88,7 +121,7 @@ data:
         # Authenticated media. The unauthenticated /_matrix/media/v3/download
         # is frozen; a 404 here means the media was purged, so treat it as
         # "no avatar" and re-upload rather than failing the user.
-        r = requests.get(
+        r = http.get(
             f"{SYNAPSE}/_matrix/client/v1/media/download/{SERVER}/{media_id}",
             headers=AUTH,
             timeout=TIMEOUT,
@@ -131,7 +164,7 @@ data:
         user_id = f"@{localpart}:{SERVER}"
         # Pocket ID serves this route unauthenticated (no auth middleware on
         # GET /users/:id/profile-picture.png), so no IdP API key is needed.
-        r = requests.get(
+        r = http.get(
             f"{POCKET_ID}/api/users/{subject}/profile-picture.png", timeout=TIMEOUT
         )
         r.raise_for_status()
@@ -162,7 +195,7 @@ data:
         # accepted and rendered by nothing: the upload above is mandatory.
         # Cross-user profile writes are admin-gated, which is the one
         # capability this token's `urn:synapse:admin:*` scope exists for.
-        r = requests.put(
+        r = http.put(
             f"{SYNAPSE}/_matrix/client/v3/profile/{user_id}/avatar_url",
             headers=AUTH,
             json={"avatar_url": mxc},
