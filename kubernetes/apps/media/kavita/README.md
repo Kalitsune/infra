@@ -134,8 +134,11 @@ account created by `POST /api/account/register` is the only one that gets the
 
 After the admin account exists, turn on *Provision accounts* (and optionally
 *Sync user settings with OIDC roles*) in the admin UI. With sync enabled, roles
-must arrive under the configured claim — Pocket ID sends groups in `groups`, so
-set **Roles claim** to `groups` and grant at least the `Login` role, or nobody
+must arrive under the configured claim. For account provisioning, the newly created
+account is assigned the roles in *Default Roles*; this MUST include `Login` or the
+account gets disabled (`Pleb` is hardcoded in the provisioning flow but `Login` is not).
+Pocket ID sends groups in `groups`, so set **Roles claim** to
+`groups` and grant at least the `Login` role, or nobody
 can sign in. Note Kavita's default roles claim is the long
 `http://schemas.microsoft.com/...` URI, not `roles`.
 
