@@ -40,6 +40,48 @@ spec:
       labels:
         app: kavita
     spec:
+      initContainers:
+        # Kavita reads Authority/ClientId/Secret for OIDC from
+        # /config/appsettings.json ONLY, at process start -- there is no env var
+        # for them (Kavita.Common/Configuration.cs), and the admin UI writes the
+        # same file. Seeding the whole file is not an option: it also holds
+        # TokenKey, which Kavita generates on first run and which invalidates
+        # every session if it changes. So patch just the OIDC object, in place,
+        # on every start, and leave the rest of the file to Kavita.
+        #
+        # jq ships in the LSIO image (verified: /usr/bin/jq), so no extra image
+        # and no shell-quoting of the secret -- it arrives as a jq --arg.
+        # Runs as root like the app container (LSIO s6 init drops to abc:1000
+        # itself) and restores ownership afterwards.
+        - name: oidc-config
+          image: lscr.io/linuxserver/kavita:latest
+          command:
+            - /bin/bash
+            - -c
+            - |
+              set -eu
+              f=/config/appsettings.json
+              # First boot: the app container's own init copies the template,
+              # but it has not run yet. Same source file it would use.
+              [ -f "$f" ] || cp /defaults/appsettings-init.json "$f"
+              tmp=$(mktemp)
+              jq --arg a "$AUTHORITY" \
+                 --arg c "$OIDC_CLIENT_ID" \
+                 --arg s "$OIDC_CLIENT_SECRET" \
+                 '.OpenIdConnectSettings = {Authority:$a, ClientId:$c, Secret:$s, CustomScopes:[]}' \
+                 "$f" > "$tmp"
+              cat "$tmp" > "$f"
+              rm -f "$tmp"
+              chown 1000:1000 "$f"
+          env:
+            - name: AUTHORITY
+              value: https://id.kalitsune.net
+          envFrom:
+            - secretRef:
+                name: kavita-oidc
+          volumeMounts:
+            - name: config
+              mountPath: /config
       containers:
         - name: kavita
           image: lscr.io/linuxserver/kavita:latest
@@ -93,9 +135,15 @@ spec:
     - port: 5000
       targetPort: 5000
 ---
-# Internal-only: Kavita ships its own account system, but this is an admin
-# surface over the library and nobody asked for public exposure. Promoting it
-# to the apex is its own commit.
+# Public, on request: a reading app is for reading from outside the house, same
+# reasoning as jellyfin on watch.kalitsune.net. Kavita authenticates every
+# request itself (its own accounts plus Pocket ID OIDC below), so it is not
+# bare on the internet the way a `lab.` admin dashboard would be.
+#
+# The apex has no wildcard CNAME -- *.kalitsune.net does not exist in the zone,
+# only *.lab / *.hermes / *.agents -- so kavita.kalitsune.net is its own CNAME
+# to lab.kalitsune.net. TLS is already covered by the *.kalitsune.net SAN on
+# the apps-tls certificate.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -106,7 +154,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - kavita.lab.kalitsune.net
+    - kavita.kalitsune.net
   rules:
     - backendRefs:
         - name: kavita
