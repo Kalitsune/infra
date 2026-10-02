@@ -84,6 +84,46 @@ The client is group-restricted to `app-media-admin` and `app-media`, matching
 jellyfin's. PKCE is on; Kavita uses the authorization-code flow with a client
 secret, which Pocket ID accepts alongside PKCE.
 
+### Auto-login and password-less sign-in
+
+Both are native Kavita settings — **do not inject JS** to fake them. They live in
+the `ServerSetting` row (DB), not in `appsettings.json`, so they are set once over
+the API/UI and are *not* GitOps-managed:
+
+| Setting                         | State | Effect                                            |
+| ------------------------------- | ----- | ------------------------------------------------- |
+| `autoLogin`                     | on    | `/login` redirects straight to Pocket ID          |
+| `disablePasswordAuthentication` | on    | hides password login — **non-admins only**        |
+
+Admins keep password login unconditionally
+(`AccountController`: `disablePasswordAuthentication && !roles.Contains(AdminRole)`),
+so these cannot lock out the admin account. Auth-key logins also bypass both.
+Escape hatches when SSO itself breaks:
+
+```
+https://read.kalitsune.net/login?forceShowPassword=true&skipAutoLogin=true
+```
+
+and, as the last resort, removing `OpenIdConnectSettings` from
+`appsettings.json` disables OIDC entirely and restores password login.
+
+Setting them over the API means POSTing the whole `ServerSettingDto` back to
+`/api/settings`. The response masks `oidcConfig.secret` as asterisks, and
+`SettingsService.UpdateOidcSettings` patches the real value back in only when the
+mask length still equals the stored secret's length — so round-tripping the
+object verbatim is safe, but editing that field by hand replaces the secret.
+Changing `authority` in the same POST would call `ClearOidcIds()` and unlink
+every account; leave it untouched. An admin JWT for this comes from an auth key
+without a browser:
+
+```bash
+curl -sX POST "http://127.0.0.1:5000/api/plugin/authenticate?apiKey=$KEY&pluginName=hale-ops"
+```
+
+Kavita's own writer adds a computed `Enabled` key to `appsettings.json` when it
+persists OIDC settings; it is get-only in `Configuration.OpenIdConnectSettings`
+and ignored on read, so the init container does not need to strip it.
+
 ### What is NOT enabled
 
 `ProvisionAccounts` defaults to `false`, so an OIDC login only succeeds for a
