@@ -5,6 +5,7 @@ resources:
   - namespace.yaml
   - media-pvc.yaml
   - jellyfin
+  - kavita
   - seerr
   - download-stack
   - download-stack-dashboard

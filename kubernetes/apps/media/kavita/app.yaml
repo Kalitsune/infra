@@ -1,0 +1,113 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: kavita-config
+  namespace: media
+spec:
+  accessModes: [ReadWriteOnce]
+  # Kavita keeps its whole state (users, series metadata, read progress) in an
+  # embedded SQLite database under /config, plus a cover-image cache. SQLite
+  # over NFS corrupts silently, so this claim is deliberately local-path and
+  # must not be "fixed" to the repo default. Pinned to the worker node; no
+  # TrueNAS snapshots, so back up /config/config/kavita.db at the app layer.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 10Gi
+---
+# Kavita: reading server for comics, manga and ebooks.
+# LSIO image rather than the official jvmilazz0/kavita because it honours
+# PUID/PGID -- the media PVC is owned 1000:1000 -- and keeps config at /config
+# instead of /kavita/config. Switching registries later means moving that
+# mount, not just the image tag.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kavita
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    # SQLite: RollingUpdate's maxSurge would start the new pod while the old one
+    # still has the database open on the same PVC. Recreate trades a few seconds
+    # of downtime for not having two writers.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: kavita
+  template:
+    metadata:
+      labels:
+        app: kavita
+    spec:
+      containers:
+        - name: kavita
+          image: lscr.io/linuxserver/kavita:latest
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+          ports:
+            - containerPort: 5000
+          # /api/health is unauthenticated and returns 200 once Kestrel is up
+          # and the migrations have run.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 5000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            # Only the Books subtree of the shared media PVC, so Kavita's
+            # library scanner never walks the film and series directories.
+            # kubelet creates the subPath on first mount.
+            - name: media
+              mountPath: /data
+              subPath: Books
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: kavita-config
+        - name: media
+          persistentVolumeClaim:
+            claimName: media-storage
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kavita
+  namespace: media
+spec:
+  selector:
+    app: kavita
+  ports:
+    - port: 5000
+      targetPort: 5000
+---
+# Internal-only: Kavita ships its own account system, but this is an admin
+# surface over the library and nobody asked for public exposure. Promoting it
+# to the apex is its own commit.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kavita
+  namespace: media
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - kavita.lab.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: kavita
+          port: 5000
