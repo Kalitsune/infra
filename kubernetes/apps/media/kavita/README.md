@@ -1,6 +1,7 @@
 # Kavita
 
-Reading server for comics, manga and ebooks on `kavita.kalitsune.net`.
+Reading server for comics, manga and ebooks on `read.kalitsune.net`
+(renamed from `kavita.kalitsune.net` at the operator's request).
 Login is Pocket ID (client `kavita`), with Kavita's own accounts still behind it.
 
 ## Storage
@@ -56,6 +57,28 @@ Redirect URIs, fixed by Kavita and registered on the Pocket ID client:
 | ------------ | ------------------------- |
 | callback     | `/signin-oidc`            |
 | post-logout  | `/signout-callback-oidc`  |
+
+Kavita builds the `redirect_uri` from the **request `Host` header**, not from
+stored config, so the HTTPRoute hostname and the Pocket ID callback list must
+agree and nothing in the database pins the old name. Because the client uses
+pushed authorization requests (PAR), a wrong hostname fails at the *push*, before
+the browser is redirected: Kavita returns `500` and logs
+
+```
+error_description: 'The redirect_uri 'https://<host>/signin-oidc' is not
+registered for this client.'
+```
+
+That means a hostname rename cannot be smoke-tested by reading the `/authorize`
+URL — PAR keeps `redirect_uri` out of it. Register the callback first, then
+assert `/oidc/login` returns `302` with a `request_uri=` parameter; a `500` is
+the unregistered-URI case. Spoofing the Host against a port-forward tests this
+without DNS:
+
+```bash
+curl -s -o /dev/null -D - -H 'Host: read.kalitsune.net' \
+  http://127.0.0.1:15000/oidc/login | grep -iE '^(HTTP/|location:)'
+```
 
 The client is group-restricted to `app-media-admin` and `app-media`, matching
 jellyfin's. PKCE is on; Kavita uses the authorization-code flow with a client

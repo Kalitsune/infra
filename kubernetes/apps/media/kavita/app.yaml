@@ -153,9 +153,14 @@ spec:
 # bare on the internet the way a `lab.` admin dashboard would be.
 #
 # The apex has no wildcard CNAME -- *.kalitsune.net does not exist in the zone,
-# only *.lab / *.hermes / *.agents -- so kavita.kalitsune.net is its own CNAME
+# only *.lab / *.hermes / *.agents -- so read.kalitsune.net is its own CNAME
 # to lab.kalitsune.net. TLS is already covered by the *.kalitsune.net SAN on
 # the apps-tls certificate.
+#
+# Hostname is read.kalitsune.net, renamed from kavita.kalitsune.net at the
+# operator's request. Kavita builds its OIDC redirect_uri from the request Host,
+# so the hostname here is also what Pocket ID must have registered as a callback
+# -- see README. The old kavita.kalitsune.net name and CNAME are gone.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
@@ -166,7 +171,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - kavita.kalitsune.net
+    - read.kalitsune.net
   rules:
     - backendRefs:
         - name: kavita
