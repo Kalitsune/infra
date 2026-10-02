@@ -53,6 +53,13 @@ spec:
         # and no shell-quoting of the secret -- it arrives as a jq --arg.
         # Runs as root like the app container (LSIO s6 init drops to abc:1000
         # itself) and restores ownership afterwards.
+        #
+        # Sets the three keys individually rather than replacing the whole
+        # OpenIdConnectSettings object: a wholesale replace would also wipe
+        # CustomScopes on every pod start, silently reverting a scope the
+        # operator added in the admin UI. CustomScopes is seeded with `groups`
+        # (Pocket ID's claim) only when empty, so role sync has the claim
+        # available but the UI stays authoritative afterwards.
         - name: oidc-config
           image: lscr.io/linuxserver/kavita:latest
           command:
@@ -68,7 +75,12 @@ spec:
               jq --arg a "$AUTHORITY" \
                  --arg c "$OIDC_CLIENT_ID" \
                  --arg s "$OIDC_CLIENT_SECRET" \
-                 '.OpenIdConnectSettings = {Authority:$a, ClientId:$c, Secret:$s, CustomScopes:[]}' \
+                 '.OpenIdConnectSettings.Authority = $a
+                  | .OpenIdConnectSettings.ClientId = $c
+                  | .OpenIdConnectSettings.Secret = $s
+                  | .OpenIdConnectSettings.CustomScopes =
+                      (.OpenIdConnectSettings.CustomScopes
+                       | if length > 0 then . else ["groups"] end)' \
                  "$f" > "$tmp"
               cat "$tmp" > "$f"
               rm -f "$tmp"

@@ -32,7 +32,19 @@ So the `oidc-config` init container patches just the `OpenIdConnectSettings`
 object in that file on every pod start, with `jq` from the app's own image, and
 leaves the rest alone. **Do not seed the whole file**: it also holds `TokenKey`,
 which Kavita generates on first run and which invalidates every existing session
-if it changes.
+if it changes. For the same reason it sets the three keys individually instead of
+replacing the object — a wholesale replace would wipe `CustomScopes` on every
+restart. `CustomScopes` is seeded with `groups` only when empty, so the admin UI
+stays authoritative after the first boot.
+
+Kavita requests `openid profile offline_access roles email` and filters them
+against the IdP's `scopes_supported`, so the log line
+
+```
+Scope roles is configured, but not supported by your OIDC provider. Skipping
+```
+
+is expected and harmless: Pocket ID exposes groups as `groups`, not `roles`.
 
 On boot, `Seed.SetOidcSettingsFromDisk` copies those three values from the file
 into the `ServerSetting` row, so the admin UI shows them as configured. Changing
@@ -63,6 +75,21 @@ must arrive under the configured claim — Pocket ID sends groups in `groups`, s
 set **Roles claim** to `groups` and grant at least the `Login` role, or nobody
 can sign in. Note Kavita's default roles claim is the long
 `http://schemas.microsoft.com/...` URI, not `roles`.
+
+## Secret
+
+`secret-oidc.yaml` is encrypted with `encrypted_regex ^(data|stringData)$`, not
+whole-file. The parent `apps/media/kustomization.yaml` sets `namespace: media`,
+and that transformer rewrites `metadata.namespace` inside every resource — on a
+fully-encrypted file it replaces the encrypted value with plaintext `media`,
+invalidating the MAC, and kustomize-controller then fails with
+
+```
+error decrypting sops tree: ... Input string does not match sops' data format
+```
+
+Every sibling secret under `apps/media` is encrypted the same way. Keep it that
+way, or drop the namespace transformer (as `apps/n8n` did).
 
 ## First login
 
