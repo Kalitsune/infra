@@ -54,6 +54,15 @@ spec:
       backendRefs:
         - name: download-stack
           port: 6767
+    # Shelfmark generates its own /shelfmark links from URL_BASE, so this
+    # prefix is passed through unrewritten -- unlike /torrent below.
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /shelfmark
+      backendRefs:
+        - name: shelfmark
+          port: 8084
     - matches:
         - path:
             type: PathPrefix

@@ -1,0 +1,149 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: shelfmark-config
+  namespace: media
+spec:
+  accessModes: [ReadWriteOnce]
+  # Shelfmark keeps users, settings, the request queue and its cover cache in
+  # an SQLite database under /config. SQLite over NFS corrupts silently, so
+  # this claim is deliberately local-path and must not be "fixed" to the repo
+  # default. Pinned to the worker node; no TrueNAS snapshots.
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
+---
+# Shelfmark (ex calibre-web-automated-book-downloader): searches Anna's Archive
+# and friends, downloads the file, drops it into the Books library Kavita
+# serves at read.kalitsune.net.
+#
+# The standard image, not shelfmark-lite, because it ships its own Chromium and
+# solves the Anna's Archive challenge itself. The alternative is lite plus an
+# external bypasser, which would mean exposing the flaresolverr container that
+# lives inside the download-stack pod -- that pod shares tailscale's network
+# namespace, so its flaresolverr has no Service port today and giving it one
+# widens that pod's surface. One self-contained image is the smaller change.
+#
+# Downloads are free-tier: no AA_DONATOR_KEY is set, so Shelfmark uses the
+# throttled slow-download links that the bundled browser can get past.
+# fast_download.json (the members-only API that LazyLibrarian's annas.py and
+# every annas-* MCP server use) is never touched.
+#
+# ponytail: egress is the pod's own, NOT the Mullvad tunnel. Only the
+# download-stack pod routes through tailscale, and joining this pod to it would
+# mean merging it into that StatefulSet. If AA traffic must leave over Mullvad,
+# say so and it becomes a tailscale sidecar here (NET_ADMIN, nftables, the same
+# postStart dance as download-stack).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: shelfmark
+  namespace: media
+spec:
+  replicas: 1
+  strategy:
+    # SQLite: RollingUpdate's maxSurge would start the new pod while the old
+    # one still has the database open on the same PVC. Recreate trades a few
+    # seconds of downtime for not having two writers.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: shelfmark
+  template:
+    metadata:
+      labels:
+        app: shelfmark
+    spec:
+      containers:
+        - name: shelfmark
+          # Pinned rather than :latest like the LSIO siblings: this project is
+          # at 1.0.x and ships schema changes between patch releases.
+          image: ghcr.io/calibrain/shelfmark:1.0.4
+          env:
+            - name: PUID
+              value: "1000"
+            - name: PGID
+              value: "1000"
+            - name: TZ
+              value: Europe/Paris
+            # Served under a subpath of the download-stack dashboard host, so
+            # Shelfmark must generate its own links with that prefix. Handled
+            # natively -- no URLRewrite filter on the route, which is why the
+            # trailing slash matters here.
+            - name: URL_BASE
+              value: /shelfmark/
+            # Anna's Archive. Off by default upstream; this is the reason the
+            # app exists here.
+            - name: DIRECT_DOWNLOAD_ENABLED
+              value: "true"
+            # annas-archive.is is dead as a source (upstream README, Aug 2026).
+            # .org is the front door, .gl the working mirror.
+            - name: AA_MIRROR_URLS
+              value: https://annas-archive.org,https://annas-archive.gl
+            # Nav button back to the library these files land in.
+            - name: CALIBRE_WEB_URL
+              value: https://read.kalitsune.net
+            # Authentication is the Pocket ID gate on the gateway route (see
+            # ../download-stack-dashboard/httproute.yaml). Shelfmark itself
+            # never sees an unauthenticated request, and its own login would
+            # be a second password to manage. Do not expose this Service or
+            # this path without that SecurityPolicy in front.
+            - name: AUTH_METHOD
+              value: none
+          ports:
+            - containerPort: 8084
+          # Unauthenticated, and prefixed by URL_BASE.
+          readinessProbe:
+            httpGet:
+              path: /shelfmark/api/health
+              port: 8084
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              # Chromium is the reason for a limit at all: starved of memory it
+              # does not error, it fails to start and every Direct Download
+              # ends as `403 detected; switching to bypasser` then `No download
+              # URL found`. Upstream calls 2Gi the safe minimum, so the ceiling
+              # sits above it rather than on it.
+              memory: 3Gi
+          volumeMounts:
+            - name: config
+              mountPath: /config
+            # Same Books subtree Kavita scans, so a finished download is a
+            # library item without any copy step.
+            - name: media
+              mountPath: /books
+              subPath: Books
+            # Downloads are staged here before being moved to /books. Kept off
+            # the container's writable layer so a large audiobook cannot eat
+            # the node's ephemeral storage, and out of /books so Kavita never
+            # scans a half-written file.
+            - name: tmp
+              mountPath: /tmp/shelfmark
+      volumes:
+        - name: config
+          persistentVolumeClaim:
+            claimName: shelfmark-config
+        - name: media
+          persistentVolumeClaim:
+            claimName: media-storage
+        - name: tmp
+          emptyDir:
+            sizeLimit: 20Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: shelfmark
+  namespace: media
+spec:
+  selector:
+    app: shelfmark
+  ports:
+    - port: 8084
+      targetPort: 8084

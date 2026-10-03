@@ -9,4 +9,5 @@ resources:
   - seerr
   - download-stack
   - download-stack-dashboard
+  - shelfmark
   - music-assistant
