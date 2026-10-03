@@ -55,22 +55,13 @@ spec:
       labels:
         app: shelfmark
     spec:
-      initContainers:
-        - name: patch-code
-          image: ghcr.io/calibrain/shelfmark:1.0.4
-          command: ["/bin/sh", "-c", "python3 /custom-cont-init.d/99-patch.py"]
-          securityContext:
-            # Must run as root to overwrite the baked /app files.
-            runAsUser: 0
-          volumeMounts:
-            - name: patch
-              mountPath: /custom-cont-init.d/99-patch.py
-              subPath: patch.py
       containers:
         - name: shelfmark
           # Pinned rather than :latest like the LSIO siblings: this project is
           # at 1.0.x and ships schema changes between patch releases.
           image: ghcr.io/calibrain/shelfmark:1.0.4
+          command: ["/bin/bash", "-c"]
+          args: ["python3 /custom-cont-init.d/99-patch.py && exec /app/entrypoint.sh"]
           env:
             - name: PUID
               value: "1000"
