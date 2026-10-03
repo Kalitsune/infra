@@ -82,13 +82,13 @@ set `DIRECT_DOWNLOAD_ENABLED`, the AA mirrors and `/books`; the wizard mostly
 confirms them.
 
 Mirrors rot, so `AA_MIRROR_URLS` is pinned to what was verified reachable from
-the pod on 2026-10-03 — `annas-archive.gl` and `annas-archive.sh`, both 200 with
-no challenge page. Do not add these back without rechecking:
-`annas-archive.org` and `annas-archive.se` are NXDOMAIN at the registry
+the pod on 2026-10-03 — `annas-archive.gl`. Do not add others back without
+rechecking: `annas-archive.org` and `annas-archive.se` are NXDOMAIN at the registry
 (`"Status":3` from Cloudflare DoH, not a cluster DNS fault), `annas-archive.pm`
 serves a certificate that fails verification, and upstream reports
-`annas-archive.is` does not work as a source. Check with
-`kubectl -n media exec deploy/shelfmark -- curl -sI https://<host>/`.
+`annas-archive.is` does not work as a source. `annas-archive.sh` resolves and
+serves pages but is a phishing clone ("Anna's Archive Premium") that returns no
+files. Check with `kubectl -n media exec deploy/shelfmark -- curl -sI https://<host>/`.
 
 Other free sources worth enabling in Settings, none of which need the browser:
 

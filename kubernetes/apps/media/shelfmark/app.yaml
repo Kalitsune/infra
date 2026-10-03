@@ -90,14 +90,14 @@ spec:
               value: "true"
             # Mirror list, verified reachable from the pod on 2026-10-03:
             #   annas-archive.gl  200, Anna's HTML, no challenge
-            #   annas-archive.sh  200, Anna's HTML, no challenge
             # Deliberately NOT annas-archive.org / .se / .is: .org and .se are
             # NXDOMAIN at the registry (`"Status":3` from 1.1.1.1), and upstream
             # reports .is does not work as a source. .pm resolves but serves a
-            # certificate that fails verification. Mirrors rotate -- recheck
-            # with `curl -sI https://<host>/` before adding one.
+            # certificate that fails verification. .sh is a known phishing clone
+            # ("Anna's Archive Premium") that returns empty searches. Mirrors rotate
+            # -- recheck with `curl -sI https://<host>/` before adding one.
             - name: AA_MIRROR_URLS
-              value: https://annas-archive.gl,https://annas-archive.sh
+              value: https://annas-archive.gl
             # Metadata provider. METADATA_PROVIDER already defaults to
             # openlibrary, but each provider also ships disabled, so without
             # this every search returns 503 "No metadata provider configured".
