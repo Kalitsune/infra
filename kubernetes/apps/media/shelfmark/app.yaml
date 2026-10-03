@@ -77,10 +77,16 @@ spec:
             # app exists here.
             - name: DIRECT_DOWNLOAD_ENABLED
               value: "true"
-            # annas-archive.is is dead as a source (upstream README, Aug 2026).
-            # .org is the front door, .gl the working mirror.
+            # Mirror list, verified reachable from the pod on 2026-10-03:
+            #   annas-archive.gl  200, Anna's HTML, no challenge
+            #   annas-archive.sh  200, Anna's HTML, no challenge
+            # Deliberately NOT annas-archive.org / .se / .is: .org and .se are
+            # NXDOMAIN at the registry (`"Status":3` from 1.1.1.1), and upstream
+            # reports .is does not work as a source. .pm resolves but serves a
+            # certificate that fails verification. Mirrors rotate -- recheck
+            # with `curl -sI https://<host>/` before adding one.
             - name: AA_MIRROR_URLS
-              value: https://annas-archive.org,https://annas-archive.gl
+              value: https://annas-archive.gl,https://annas-archive.sh
             # Nav button back to the library these files land in.
             - name: CALIBRE_WEB_URL
               value: https://read.kalitsune.net

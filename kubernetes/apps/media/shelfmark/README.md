@@ -79,8 +79,16 @@ and so Kavita never scans a half-written file.
 
 The onboarding wizard asks for sources and destinations. The env vars already
 set `DIRECT_DOWNLOAD_ENABLED`, the AA mirrors and `/books`; the wizard mostly
-confirms them. `annas-archive.is` is dead as a source (upstream README, checked
-Aug 2026) — `annas-archive.org` and `annas-archive.gl` are the live ones.
+confirms them.
+
+Mirrors rot, so `AA_MIRROR_URLS` is pinned to what was verified reachable from
+the pod on 2026-10-03 — `annas-archive.gl` and `annas-archive.sh`, both 200 with
+no challenge page. Do not add these back without rechecking:
+`annas-archive.org` and `annas-archive.se` are NXDOMAIN at the registry
+(`"Status":3` from Cloudflare DoH, not a cluster DNS fault), `annas-archive.pm`
+serves a certificate that fails verification, and upstream reports
+`annas-archive.is` does not work as a source. Check with
+`kubectl -n media exec deploy/shelfmark -- curl -sI https://<host>/`.
 
 Other free sources worth enabling in Settings, none of which need the browser:
 
