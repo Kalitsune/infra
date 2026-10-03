@@ -2,6 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - app.yaml
+  - patch-cm.yaml
 # No httproute.yaml here, which is the exception to the repo rule that an app
 # ships its own route. Shelfmark is served as /shelfmark on the existing
 # download-stack.lab.kalitsune.net host so it inherits that route's Pocket ID

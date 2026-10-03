@@ -1,0 +1,42 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: shelfmark-patch
+  namespace: media
+data:
+  patch.py: |
+    import os, re
+    print("=== Patching Shelfmark 1.0.4 bugs ===")
+    
+    # 1. direct_download.py: allow_bypasser_fallback=True
+    dd = "/app/shelfmark/release_sources/direct_download.py"
+    if os.path.exists(dd):
+        c = open(dd).read()
+        c = c.replace("allow_bypasser_fallback=False", "allow_bypasser_fallback=True")
+        open(dd, "w").write(c)
+        print("Patched direct_download.py")
+
+    # 2. http.py: check for challenge on 200 OK
+    http = "/app/shelfmark/download/http.py"
+    if os.path.exists(http):
+        c = open(http).read()
+        if "_HTTP_STATUS_OK:" not in c:
+            # Add a check right before `if success_delay > 0:`
+            old_block = """
+                if success_delay > 0:
+                    time.sleep(success_delay)
+                return _result(response.text, response.url)"""
+            new_block = """
+                marker = _response_challenge_marker(response)
+                if marker and _bypass_handoff_allowed():
+                    if cookies:
+                        logger.debug("200 challenge with cookies presented; purging: %s", current_url)
+                        _purge_clearance(current_url)
+                    logger.info("200 challenge detected (%s); switching to bypasser: %s", marker, current_url)
+                    return _run_bypasser(current_url)
+                if success_delay > 0:
+                    time.sleep(success_delay)
+                return _result(response.text, response.url)"""
+            c = c.replace(old_block, new_block)
+            open(http, "w").write(c)
+            print("Patched http.py")

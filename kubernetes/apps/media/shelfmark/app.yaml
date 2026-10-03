@@ -144,6 +144,12 @@ spec:
             # scans a half-written file.
             - name: tmp
               mountPath: /tmp/shelfmark
+            # LSIO runs scripts placed here as root before dropping privileges
+            # to start the app. Used to inject python patches into the baked
+            # image.
+            - name: patch
+              mountPath: /custom-cont-init.d/99-patch.py
+              subPath: patch.py
       volumes:
         - name: config
           persistentVolumeClaim:
@@ -154,6 +160,10 @@ spec:
         - name: tmp
           emptyDir:
             sizeLimit: 20Gi
+        - name: patch
+          configMap:
+            name: shelfmark-patch
+            defaultMode: 0755
 ---
 apiVersion: v1
 kind: Service
