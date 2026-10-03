@@ -87,6 +87,13 @@ spec:
             # with `curl -sI https://<host>/` before adding one.
             - name: AA_MIRROR_URLS
               value: https://annas-archive.gl,https://annas-archive.sh
+            # Metadata provider. METADATA_PROVIDER already defaults to
+            # openlibrary, but each provider also ships disabled, so without
+            # this every search returns 503 "No metadata provider configured".
+            # Open Library is the one that needs no API key -- Hardcover and
+            # Google Books both do.
+            - name: OPENLIBRARY_ENABLED
+              value: "true"
             # Nav button back to the library these files land in.
             - name: CALIBRE_WEB_URL
               value: https://read.kalitsune.net
