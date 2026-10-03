@@ -94,6 +94,12 @@ spec:
             # Google Books both do.
             - name: OPENLIBRARY_ENABLED
               value: "true"
+            # DoH is broken in the python requests stack for several upstream
+            # providers (Quad9 gives HTTP 505, OpenDNS gives 400). When `auto`
+            # rotates through them, the timeouts eat the search's time budget
+            # before the browser can even launch. System DNS works fine here.
+            - name: USE_DOH
+              value: "false"
             # Nav button back to the library these files land in.
             - name: CALIBRE_WEB_URL
               value: https://read.kalitsune.net
