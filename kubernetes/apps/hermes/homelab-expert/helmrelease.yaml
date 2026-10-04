@@ -341,15 +341,15 @@ spec:
       # gate and the audit log key on.
       - secretRef:
           name: homelab-expert-a2a
-        # MATRIX_RECOVERY_KEY now lives in the Secret above rather than in its
-        # own file. The agent originally had to split it out because it cannot
-        # decrypt SOPS (adding a key to an encrypted file needs the private
-        # key), but the operator holds that key and folded it back in — one
-        # Secret per identity is the better shape, so the workaround is gone.
-        #
-        # It must be THIS account's key, not @hermes'. They are separate Matrix
-        # accounts with different self-signing keys, so the wrong one fails with
-        # "Key MAC does not match" (the case _scoped_recovery_key() documents).
+          # MATRIX_RECOVERY_KEY now lives in the Secret above rather than in its
+          # own file. The agent originally had to split it out because it cannot
+          # decrypt SOPS (adding a key to an encrypted file needs the private
+          # key), but the operator holds that key and folded it back in — one
+          # Secret per identity is the better shape, so the workaround is gone.
+          #
+          # It must be THIS account's key, not @hermes'. They are separate Matrix
+          # accounts with different self-signing keys, so the wrong one fails with
+          # "Key MAC does not match" (the case _scoped_recovery_key() documents).
       # 9Router API key (HOMELAB_EXPERT_9ROUTER_KEY), referenced by
       # config.providers.9router.key_env above. Created by the provisioning
       # Job in apps/9router; optional so a first-ever deploy does not block on
