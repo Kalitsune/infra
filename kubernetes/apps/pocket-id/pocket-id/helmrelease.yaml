@@ -44,7 +44,7 @@ spec:
         size: 10Gi
     config:
       ui:
-        useDefaults: false
+        useDefaults: true
         settings:
           app:
             appName: "FoxID!"
@@ -60,3 +60,29 @@ spec:
             user: "resend"
             port: "465"
             tls: "tls"
+    startupProbe:
+      httpGet:
+        path: /healthz
+        port: http
+      failureThreshold: 10
+      periodSeconds: 5
+      timeoutSeconds: 5
+    livenessProbe:
+      httpGet:
+        path: /healthz
+        port: http
+      failureThreshold: 5
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /healthz
+        port: http
+      failureThreshold: 5
+      periodSeconds: 10
+    pocketID:
+      resources:
+        requests:
+          cpu: 50m
+          memory: 64Mi
+        limits:
+          memory: 256Mi
