@@ -1,4 +1,2 @@
-machine:
-  features:
-    kubernetes:
-      allowSchedulingOnControlPlane: true
+cluster:
+  allowSchedulingOnControlPlanes: true
