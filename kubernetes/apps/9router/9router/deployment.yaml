@@ -26,7 +26,8 @@ spec:
           # semver tags and resolves 0.5.69 to this identical digest (both
           # registries are pushed by the same CI job), so switching registry
           # is a hostname change and nothing else.
-          image: docker.io/decolua/9router:0.5.69@sha256:47c17576ad49f0918d1a455dd412ae4509ee8bc742f17ba0b3327ddc70f35a40
+          image: docker.io/decolua/9router:0.5.95@sha256:4316fefb95ea642d57db885d906b1227b1768b15ac5def314621fd781da7b3f1
+
           env:
             # All state (SQLite db, backups, generated jwt-secret, certs) goes
             # here. Without DATA_DIR the app falls back to ~/.9router inside
