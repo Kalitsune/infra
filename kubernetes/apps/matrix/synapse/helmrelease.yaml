@@ -27,6 +27,25 @@ spec:
     remediation:
       retries: 3
   timeout: 20m
+  # The chart hardcodes RollingUpdate maxSurge 2 / maxUnavailable 0 on every
+  # Deployment (ess-library _workloads.tpl, no values knob). The SFU holds host
+  # ports and is pinned to one node, so the surge pod can never schedule beside
+  # the old one: the rollout hits progressDeadlineSeconds and Helm rolls the
+  # whole release back (26.9.4, stalled since 2026-09-30). Host ports are a
+  # node-level singleton: replace, don't surge.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              group: apps
+              version: v1
+              kind: Deployment
+              name: synapse-matrix-rtc-sfu
+            patch: |
+              - op: replace
+                path: /spec/strategy
+                value:
+                  type: Recreate
   values:
     # Immutable. server_name is baked into every user/room ID; changing it
     # means wiping the database. Bare apex so IDs read @you:kalitsune.net,
