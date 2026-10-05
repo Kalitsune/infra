@@ -283,7 +283,7 @@ spec:
       # Only this identity may run tasks. The name matches the left-hand side
       # of A2A_PEER_TOKENS, i.e. an authenticated peer-token name.
       - name: A2A_TRUSTED_PEERS
-        value: "hermes"
+        value: "hermes,finnegan"
       # What the Agent Card advertises. NOT the full toolset: this agent holds
       # a cluster-admin kubeconfig and a push-capable deploy key, so it does
       # not advertise `terminal`, `coding`, `code_execution` or `file` to
