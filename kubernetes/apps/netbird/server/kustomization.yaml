@@ -1,0 +1,25 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - secret.sops.yaml
+  - pvc.yaml
+  - app.yaml
+  - service.yaml
+  - httproute.yaml
+configMapGenerator:
+  - name: netbird-dashboard-config
+    namespace: netbird
+    behavior: create
+    literals:
+      - NETBIRD_MGMT_API_ENDPOINT=https://netbird.lab.kalitsune.net
+      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.lab.kalitsune.net
+      - AUTH_AUDIENCE=netbird-dashboard
+      - AUTH_CLIENT_ID=netbird-dashboard
+      - AUTH_AUTHORITY=https://id.kalitsune.net
+      - USE_AUTH0=false
+      - AUTH_SUPPORTED_SCOPES=openid profile email groups
+      - AUTH_REDIRECT_URI=/nb-auth
+      - AUTH_SILENT_REDIRECT_URI=/nb-silent-auth
+      - NGINX_SSL_PORT=443
+      - LETSENCRYPT_DOMAIN=none

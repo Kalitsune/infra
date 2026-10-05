@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird
+  namespace: netbird
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: netbird
+  template:
+    metadata:
+      labels:
+        app: netbird
+      annotations:
+        kalitsune.net/config-generation: "1"
+    spec:
+      containers:
+        - name: netbird-server
+          image: docker.io/netbirdio/netbird-server:0.80.0
+          command:
+            - "/go/bin/netbird-server"
+            - "--config"
+            - "/etc/netbird/config.yaml"
+          ports:
+            - containerPort: 80
+              name: http-grpc
+          volumeMounts:
+            - name: netbird-data
+              mountPath: /var/lib/netbird
+            - name: config
+              mountPath: /etc/netbird
+              readOnly: true
+          livenessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+        - name: netbird-dashboard
+          image: docker.io/netbirdio/dashboard:latest
+          envFrom:
+            - configMapRef:
+                name: netbird-dashboard-config
+          ports:
+            - containerPort: 80
+              name: dashboard-http
+      volumes:
+        - name: netbird-data
+          persistentVolumeClaim:
+            claimName: netbird-data
+        - name: config
+          secret:
+            secretName: netbird-config-secret

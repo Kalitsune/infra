@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: netbird-dashboard
+  namespace: netbird
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: netbird-dashboard
+  template:
+    metadata:
+      labels:
+        app: netbird-dashboard
+    spec:
+      securityContext:
+        runAsUser: 1000
+        runAsGroup: 1000
+        fsGroup: 1000
+      containers:
+        - name: dashboard
+          image: docker.io/netbirdio/dashboard:main-rootless
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: NETBIRD_MGMT_API_ENDPOINT
+              value: "https://netbird.lab.kalitsune.net"
+            - name: NETBIRD_MGMT_GRPC_API_ENDPOINT
+              value: "https://netbird.lab.kalitsune.net"
+            - name: AUTH_AUDIENCE
+              value: "netbird-dashboard"
+            - name: AUTH_CLIENT_ID
+              value: "netbird-dashboard"
+            - name: AUTH_AUTHORITY
+              value: "https://netbird.lab.kalitsune.net/oauth2"
+            - name: USE_AUTH0
+              value: "false"
+            - name: AUTH_SUPPORTED_SCOPES
+              value: "openid profile email offline_access"
+            - name: AUTH_REDIRECT_URI
+              value: "/nb-auth"
+            - name: AUTH_SILENT_REDIRECT_URI
+              value: "/nb-silent-auth"
+            - name: NGINX_SSL_PORT
+              value: "8080"
+            - name: LETSENCRYPT_DOMAIN
+              value: "none"
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: false
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: netbird-dashboard
+  namespace: netbird
+spec:
+  selector:
+    app: netbird-dashboard
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 80
