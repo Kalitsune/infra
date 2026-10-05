@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/netbird/netbird
+  path: ./kubernetes/apps/netbird/server
   prune: true
   sourceRef:
     kind: GitRepository
