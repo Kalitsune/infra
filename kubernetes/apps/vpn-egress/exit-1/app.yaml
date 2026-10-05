@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exit-1
+  namespace: netbird
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: exit-1
+  template:
+    metadata:
+      labels:
+        app: exit-1
+    spec:
+      containers:
+        - name: gluetun
+          image: docker.io/qmcgaw/gluetun:v3.41.3
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - MKNOD
+          envFrom:
+            - secretRef:
+                name: exit-1-vpn-secret
+          env:
+            - name: VPN_SERVICE_PROVIDER
+              value: "custom"
+            - name: VPN_TYPE
+              value: "wireguard"
+          # MKNOD is needed because /dev/net/tun is absent.
+          command:
+            - "/bin/sh"
+            - "-c"
+            - "mkdir -p /dev/net && mknod /dev/net/tun c 10 200 || true; exec /gluetun-entrypoint"
+        - name: netbird
+          image: docker.io/netbirdio/netbird:0.80.0
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          envFrom:
+            - secretRef:
+                name: exit-1-netbird-secret
+          command:
+            - "/bin/sh"
+            - "-c"
+            - |
+              netbird service run &
+              sleep 5
+              # NB_SETUP_KEY should be in exit-1-netbird-secret
+              netbird up --management-url "https://netbird.lab.kalitsune.net" --setup-key "$NB_SETUP_KEY" --mtu 1200
+              # Fix for Netbird issue #5391 (missing 0.0.0.0/0 accept in exit node forward chain)
+              while true; do
+                if iptables -t filter -L netbird-rt-fwd >/dev/null 2>&1; then
+                  iptables -C netbird-rt-fwd -j ACCEPT >/dev/null 2>&1 || iptables -I netbird-rt-fwd 1 -j ACCEPT
+                fi
+                sleep 60
+              done
