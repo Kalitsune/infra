@@ -52,7 +52,7 @@ spec:
               netbird service run &
               sleep 5
               # NB_SETUP_KEY should be in exit-1-netbird-secret
-              netbird up --management-url "https://netbird.lab.kalitsune.net" --setup-key "$NB_SETUP_KEY" --mtu 1200
+              netbird up --management-url "https://netbird.kalitsune.net" --setup-key "$NB_SETUP_KEY" --mtu 1200
               # Fix for Netbird issue #5391 (missing 0.0.0.0/0 accept in exit node forward chain)
               while true; do
                 if iptables -t filter -L netbird-rt-fwd >/dev/null 2>&1; then

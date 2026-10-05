@@ -12,8 +12,8 @@ configMapGenerator:
     namespace: netbird
     behavior: create
     literals:
-      - NETBIRD_MGMT_API_ENDPOINT=https://netbird.lab.kalitsune.net
-      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.lab.kalitsune.net
+      - NETBIRD_MGMT_API_ENDPOINT=https://netbird.kalitsune.net
+      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.kalitsune.net
       - AUTH_AUDIENCE=netbird-dashboard
       - AUTH_CLIENT_ID=netbird-dashboard
       - AUTH_AUTHORITY=https://id.kalitsune.net
