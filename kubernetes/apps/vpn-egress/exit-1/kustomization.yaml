@@ -4,3 +4,5 @@ resources:
   - secret-vpn.sops.yaml
   - secret-netbird.sops.yaml
   - app.yaml
+patches:
+  - path: patch.yaml
