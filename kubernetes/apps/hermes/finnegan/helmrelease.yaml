@@ -79,6 +79,8 @@ spec:
       model:
         provider: 9router
         default: high-effort
+        roles:
+          aux: fast-af
 
       providers:
         9router:
