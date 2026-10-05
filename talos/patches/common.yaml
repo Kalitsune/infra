@@ -3,6 +3,10 @@ machine:
     disk: /dev/sda
     image: ghcr.io/siderolabs/installer:v1.13.4
     wipe: false
+    # These nodes were installed before v1.12 and boot GRUB with a host-built
+    # cmdline. talosctl now defaults this to true for fresh renders; flipping it
+    # on an existing install changes where the kernel cmdline comes from.
+    grubUseUKICmdline: false
 cluster:
   network:
     # Cilium is installed by Flux, so Talos must not lay down a CNI.

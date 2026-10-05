@@ -22,10 +22,7 @@ spec:
             value: /management.ProxyService/
       backendRefs:
         - name: netbird-server
-          port: 80
-          # Envoy translates h2c for us if the app expects HTTP/2 cleartext. 
-          # Or does Envoy just talk HTTP/2 automatically if ALPN says so?
-          # Gateway API allows setting BackendProtocol via Extension or just trusting app HTTP/2.
+          port: 8080
     - matches:
         - path:
             type: PathPrefix
@@ -38,7 +35,7 @@ spec:
             value: /api
       backendRefs:
         - name: netbird-server
-          port: 80
+          port: 8080
     - matches:
         - path:
             type: PathPrefix

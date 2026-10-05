@@ -2,3 +2,11 @@ machine:
   nodeLabels:
     # Envoy Gateway's LoadBalancer should never land on the control plane.
     node.kubernetes.io/exclude-from-external-load-balancers: ""
+---
+# The live node is named talos-192-168-1-170, the pre-v1.13 addr-based default.
+# v1.13 renders `auto: stable` (talos-xxx-xxx from machine ID), which would
+# rename the node. Pin it.
+apiVersion: v1alpha1
+kind: HostnameConfig
+hostname: talos-192-168-1-170
+auto: off

@@ -9,7 +9,7 @@ spec:
     app: netbird
   ports:
     - name: http-grpc
-      port: 443
+      port: 8080
       targetPort: http-grpc
 ---
 apiVersion: v1
