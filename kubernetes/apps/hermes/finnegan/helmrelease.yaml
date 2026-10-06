@@ -79,8 +79,43 @@ spec:
       model:
         provider: 9router
         default: high-effort
-        roles:
-          aux: fast-af
+
+      # `model.roles` is NOT a Hermes key (grep the source: only Discord member
+      # roles match). The earlier attempt to move side tasks off Opus that way
+      # was a silent no-op — aux kept resolving "auto" = main provider + main
+      # model. The real key is `auxiliary.<task>`, one block per task.
+      #
+      # Why it matters: claude-opus-5-5 refuses Hermes' own meta-prompts with
+      # "Terms of Service restrictions on reverse engineering or duplicating
+      # model outputs". Side tasks are also pure volume — approval
+      # classification alone ran 689 calls in two days.
+      auxiliary:
+        approval: {provider: 9router, model: fast-af}
+        title_generation: {provider: 9router, model: fast-af}
+        memory_query_rewrite: {provider: 9router, model: fast-af}
+        skills_hub: {provider: 9router, model: fast-af}
+        mcp: {provider: 9router, model: fast-af}
+        monitor: {provider: 9router, model: fast-af}
+        tts_audio_tags: {provider: 9router, model: fast-af}
+        profile_describer: {provider: 9router, model: fast-af}
+        goal_judge: {provider: 9router, model: fast-af}
+        triage_specifier: {provider: 9router, model: fast-af}
+        kanban_decomposer: {provider: 9router, model: fast-af}
+        # NOT fast-af: compression feeds the whole conversation to the model and
+        # fires at ~165K tokens, while fast-af's window is 200K — too thin to
+        # bet a transcript on. medium-effort has 272K. Same for the reviewers,
+        # which produce durable artifacts (skills, memory, /review output).
+        compression: {provider: 9router, model: medium-effort}
+        curator: {provider: 9router, model: medium-effort}
+        background_review: {provider: 9router, model: medium-effort}
+        review: {provider: 9router, model: medium-effort}
+
+      # A content-policy refusal is deterministic — Hermes never retries it, it
+      # takes ONE configured fallback or surfaces the block to the user. Without
+      # an entry here, a main-turn Opus refusal ends the turn.
+      fallback_providers:
+        - provider: 9router
+          model: medium-effort
 
       providers:
         9router:
