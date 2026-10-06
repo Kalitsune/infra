@@ -79,6 +79,21 @@ spec:
       # which is what makes this GitOps-managed rather than click-ops.
       - name: ENABLE_PERSISTENT_CONFIG
         value: "false"
+      # Title / tags / follow-up / query generation ran as a FULL agent turn on
+      # whichever model the chat used — so a chat with Hale posted meta-prompts
+      # ("### Task: Suggest 3-5 relevant follow-up questions...") into a
+      # cluster-admin agent on claude-opus-5-5, 27 tools and all. Opus 5.5
+      # blocks those with "Terms of Service restrictions on reverse engineering
+      # or duplicating model outputs" (14 refusals logged, 9 of them from this
+      # path), and every one also burned a full agent context.
+      #
+      # TASK_MODEL_EXTERNAL pins all task generation to one model id that must
+      # exist in the model list — "fast-af" is the 9Router combo (haiku), i.e.
+      # the cheap lane, and it bypasses the agent connections entirely.
+      # Open WebUI only honours it for external (non-local) connections, which
+      # is every connection here.
+      - name: TASK_MODEL_EXTERNAL
+        value: "fast-af"
       - name: WEBUI_SECRET_KEY
         valueFrom:
           secretKeyRef:
