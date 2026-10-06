@@ -109,6 +109,17 @@ spec:
         background_review: {provider: 9router, model: medium-effort}
         review: {provider: 9router, model: medium-effort}
 
+      # Why this is the fix for "the agent stopped replying": when 9Router's
+      # combo has a single member and that member 429s (Anthropic account rate
+      # limit), the combo answers "All models failed" and the turn ends with an
+      # EMPTY assistant message — no error text in the UI, just a blank reply.
+      # Hermes never retries a terminal provider error; it takes ONE configured
+      # fallback or surfaces nothing. Without an entry here a rate-limit storm
+      # is indistinguishable from a hung agent.
+      fallback_providers:
+        - provider: 9router
+          model: medium-effort
+
       providers:
         9router:
           name: 9router
