@@ -17,7 +17,7 @@ spec:
       annotations:
         # envFrom/secret mounts are read once at container start; bump this to
         # force a roll when the config Secret or dashboard ConfigMap changes.
-        kalitsune.net/config-generation: "2"
+        kalitsune.net/config-generation: "3"
     spec:
       containers:
         - name: netbird-server
