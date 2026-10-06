@@ -31,6 +31,39 @@ deliberately not expressed in this directory. There is no manifest to change for
 it, and pointing `AUTH_AUTHORITY` at `id.kalitsune.net` to "wire it up properly"
 re-breaks login.
 
+## The other thing that will bite you
+
+**`server.auth.owner.password` takes a bcrypt hash, not a password.**
+
+`combined/cmd/config.go:636` copies the value verbatim into
+`idp.OwnerConfig.Hash`, which Dex parses as bcrypt — while upstream's
+`config.yaml.example` documents the field as `password: "initial-password"`.
+Following the example costs you a server that starts, serves, and passes every
+health check, but rejects the owner at the login form:
+
+```
+ERRO [err: parsing bcrypt hash: crypto/bcrypt: hashedSecret too short to be a
+bcrypted password] idp/dex/logrus_handler.go:83: failed to login user
+```
+
+The dashboard shows only `Internal Server Error`. Upstream bug
+netbirdio/netbird#7169. Generate the value with cost 10:
+
+```sh
+uv run --with bcrypt python -c 'import bcrypt,sys;print(bcrypt.hashpw(sys.argv[1].encode(),bcrypt.gensalt(rounds=10)).decode())' "$PASSWORD"
+```
+
+`$2y$` from `htpasswd -nbB` works too; `htpasswd -nb` emits Apache MD5 and fails
+with a misleading `bcrypt algorithm version 'a'` error.
+
+The setup wizard is not a fallback: it is unreachable behind an external proxy
+(netbirdio/dashboard#601), and once an owner exists `/api/instance` returns
+`setup_required: false`, so the only route back in is a correct hash.
+
+Once you have changed the password in the UI, delete the `owner:` block — it is
+re-read on every boot, so leaving it means the config file keeps a credential
+that still works.
+
 ## Ports: :8080, not :443
 
 The dashboard container is nginx on `:80` and shares this pod's network
