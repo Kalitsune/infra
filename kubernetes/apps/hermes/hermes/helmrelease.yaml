@@ -86,6 +86,29 @@ spec:
         provider: 9router
         default: medium-effort
 
+      # Side tasks on the cheap lane. `model.roles.aux` looks like the key for
+      # this and is not one — Hermes reads `auxiliary.<task>`, and anything left
+      # at the default "auto" inherits the MAIN model, so a dispatcher that
+      # mostly relays messages was classifying approvals on sonnet.
+      # Not every task: compression and the reviewers keep a bigger window
+      # (fast-af is 200K and compression feeds it the whole transcript).
+      auxiliary:
+        approval: {provider: 9router, model: fast-af}
+        title_generation: {provider: 9router, model: fast-af}
+        memory_query_rewrite: {provider: 9router, model: fast-af}
+        skills_hub: {provider: 9router, model: fast-af}
+        mcp: {provider: 9router, model: fast-af}
+        monitor: {provider: 9router, model: fast-af}
+        tts_audio_tags: {provider: 9router, model: fast-af}
+        profile_describer: {provider: 9router, model: fast-af}
+        goal_judge: {provider: 9router, model: fast-af}
+        triage_specifier: {provider: 9router, model: fast-af}
+        kanban_decomposer: {provider: 9router, model: fast-af}
+        compression: {provider: 9router, model: medium-effort}
+        curator: {provider: 9router, model: medium-effort}
+        background_review: {provider: 9router, model: medium-effort}
+        review: {provider: 9router, model: medium-effort}
+
       providers:
         9router:
           name: 9router
