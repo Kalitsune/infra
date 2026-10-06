@@ -9,5 +9,9 @@ spec:
       containers:
         - name: gluetun
           env:
+            # gluetun's firewall drops everything that is not the tunnel, which
+            # also kills cluster DNS (10.96.0.10) -- the symptom is
+            # "write udp ... operation not permitted" on every lookup. These
+            # three are the Service CIDR, the pod CIDR and the LAN.
             - name: FIREWALL_OUTBOUND_SUBNETS
               value: "10.96.0.0/12,10.244.0.0/16,192.168.1.0/24"

@@ -4,7 +4,11 @@ metadata:
   name: exit-1
   namespace: netbird
 spec:
-  replicas: 1
+  # Parked at 0 until the operator fills in real credentials. Both Secrets
+  # currently hold placeholders, and gluetun exits on a malformed WireGuard key,
+  # so a running replica is a guaranteed CrashLoopBackOff that buries real
+  # alerts. Set this to 1 in the SAME commit that lands the real keys.
+  replicas: 0
   strategy:
     type: Recreate
   selector:
@@ -31,7 +35,8 @@ spec:
               value: "custom"
             - name: VPN_TYPE
               value: "wireguard"
-          # MKNOD is needed because /dev/net/tun is absent.
+          # /dev/net/tun does not exist in this image and the pod cannot mount
+          # hostPath, so the device node is created at start -- hence MKNOD.
           command:
             - "/bin/sh"
             - "-c"
@@ -45,18 +50,36 @@ spec:
           envFrom:
             - secretRef:
                 name: exit-1-netbird-secret
+          # MTU 1200, below the 1280 default: this WireGuard interface runs
+          # INSIDE gluetun's tunnel, so the provider's own overhead has already
+          # eaten into the path MTU. At 1280 small requests work and large
+          # transfers hang forever -- DNS resolves, pages never finish.
           command:
             - "/bin/sh"
             - "-c"
             - |
+              set -e
               netbird service run &
               sleep 5
-              # NB_SETUP_KEY should be in exit-1-netbird-secret
-              netbird up --management-url "https://netbird.kalitsune.net" --setup-key "$NB_SETUP_KEY" --mtu 1200
-              # Fix for Netbird issue #5391 (missing 0.0.0.0/0 accept in exit node forward chain)
+              netbird up --management-url "https://netbird.kalitsune.net" \
+                --setup-key "$NB_SETUP_KEY" --mtu 1200
+              # netbird issue #5391: a containerised exit node never gets the
+              # 0.0.0.0/0 accept rule in netbird-rt-fwd, only per-route ones,
+              # so mesh clients reach the peer and then get no internet. The
+              # chain is rebuilt whenever a client reconnects, so this has to
+              # keep re-asserting rather than run once. No nft in this image;
+              # iptables (nf_tables backend) is present and works.
               while true; do
                 if iptables -t filter -L netbird-rt-fwd >/dev/null 2>&1; then
-                  iptables -C netbird-rt-fwd -j ACCEPT >/dev/null 2>&1 || iptables -I netbird-rt-fwd 1 -j ACCEPT
+                  iptables -C netbird-rt-fwd -j ACCEPT >/dev/null 2>&1 \
+                    || iptables -I netbird-rt-fwd 1 -j ACCEPT
                 fi
                 sleep 60
               done
+          # Without this the container reports Ready while `netbird up` is
+          # failing to register, because the shell wrapper stays alive.
+          readinessProbe:
+            exec:
+              command: ["/bin/sh", "-c", "netbird status | grep -q 'Management: Connected'"]
+            initialDelaySeconds: 20
+            periodSeconds: 30

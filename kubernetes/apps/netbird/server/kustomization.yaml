@@ -2,7 +2,7 @@ apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization
 resources:
   - namespace.yaml
-  - secret.sops.yaml
+  - secret.yaml
   - pvc.yaml
   - app.yaml
   - service.yaml
@@ -14,11 +14,20 @@ configMapGenerator:
     literals:
       - NETBIRD_MGMT_API_ENDPOINT=https://netbird.kalitsune.net
       - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.kalitsune.net
+      # AUTH_* describe the EMBEDDED IdP (Dex), which netbird-server itself
+      # hosts at /oauth2 on this same hostname -- not Pocket ID. Pointing
+      # AUTH_AUTHORITY at id.kalitsune.net cannot work: Pocket ID has no
+      # netbird-dashboard client, and the server validates tokens against its
+      # own issuer. Pocket ID is added afterwards as a second connector from
+      # Settings -> Identity Providers in the dashboard, which stores it in the
+      # database; it is deliberately not expressed here.
       - AUTH_AUDIENCE=netbird-dashboard
       - AUTH_CLIENT_ID=netbird-dashboard
-      - AUTH_AUTHORITY=https://id.kalitsune.net
+      - AUTH_CLIENT_SECRET=
+      - AUTH_AUTHORITY=https://netbird.kalitsune.net/oauth2
       - USE_AUTH0=false
       - AUTH_SUPPORTED_SCOPES=openid profile email groups
+      # Must match server.auth.dashboardRedirectURIs in the config Secret.
       - AUTH_REDIRECT_URI=/nb-auth
       - AUTH_SILENT_REDIRECT_URI=/nb-silent-auth
       - NGINX_SSL_PORT=443

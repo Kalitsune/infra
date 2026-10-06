@@ -3,6 +3,11 @@ kind: HTTPRoute
 metadata:
   name: netbird
   namespace: netbird
+  # Apex, not lab.: netbird is only useful if peers can reach it from hostile
+  # networks (phones on mobile data, laptops in cafes), which is the same
+  # argument that puts the Matrix homeserver on the apex. The surface is
+  # narrowed instead: no local signup, the only account is the configured
+  # owner, and the admin dashboard sits behind that account's login.
 spec:
   parentRefs:
     - name: apps
@@ -10,6 +15,10 @@ spec:
   hostnames:
     - "netbird.kalitsune.net"
   rules:
+    # 1. gRPC: management + signal. Long-lived bidirectional streams -- a peer
+    #    holds one open for its whole session. Envoy's default 15s request
+    #    timeout would sever them, so it is explicitly disabled ("0s"), which
+    #    Gateway API defines as "no timeout".
     - matches:
         - path:
             type: PathPrefix
@@ -20,9 +29,18 @@ spec:
         - path:
             type: PathPrefix
             value: /management.ProxyService/
+      timeouts:
+        request: "0s"
+        backendRequest: "0s"
       backendRefs:
         - name: netbird-server
           port: 8080
+    # 2. Relay websockets, REST API, and the embedded Dex IdP at /oauth2.
+    #    /oauth2 MUST land on netbird-server: the server hosts the OIDC
+    #    discovery document, JWKS and token endpoint there. If the catch-all
+    #    rule below swallows it, the dashboard login fetches
+    #    /oauth2/.well-known/openid-configuration from nginx and gets the SPA's
+    #    index.html back, so sign-in fails with a JSON parse error.
     - matches:
         - path:
             type: PathPrefix
@@ -33,9 +51,16 @@ spec:
         - path:
             type: PathPrefix
             value: /api
+        - path:
+            type: PathPrefix
+            value: /oauth2
+      timeouts:
+        request: "0s"
+        backendRequest: "0s"
       backendRefs:
         - name: netbird-server
           port: 8080
+    # 3. Everything else: the dashboard SPA (nginx).
     - matches:
         - path:
             type: PathPrefix

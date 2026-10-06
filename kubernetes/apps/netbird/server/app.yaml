@@ -15,7 +15,9 @@ spec:
       labels:
         app: netbird
       annotations:
-        kalitsune.net/config-generation: "1"
+        # envFrom/secret mounts are read once at container start; bump this to
+        # force a roll when the config Secret or dashboard ConfigMap changes.
+        kalitsune.net/config-generation: "2"
     spec:
       containers:
         - name: netbird-server
@@ -25,8 +27,12 @@ spec:
             - "--config"
             - "/etc/netbird/config.yaml"
           ports:
+            # :8080, not :80 -- the dashboard nginx in this same pod owns :80,
+            # and a shared network namespace means one bind per port.
             - containerPort: 8080
               name: http-grpc
+            - containerPort: 9000
+              name: health
           volumeMounts:
             - name: netbird-data
               mountPath: /var/lib/netbird
@@ -37,6 +43,11 @@ spec:
             tcpSocket:
               port: 9000
             initialDelaySeconds: 15
+            periodSeconds: 10
+          readinessProbe:
+            tcpSocket:
+              port: 9000
+            initialDelaySeconds: 10
             periodSeconds: 10
         - name: netbird-dashboard
           image: docker.io/netbirdio/dashboard:latest

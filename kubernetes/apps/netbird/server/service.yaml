@@ -11,6 +11,13 @@ spec:
     - name: http-grpc
       port: 8080
       targetPort: http-grpc
+      # netbird's management and signal APIs are gRPC over cleartext HTTP/2
+      # (h2c) -- the pod terminates no TLS. Without this hint Envoy Gateway
+      # talks HTTP/1.1 upstream and every gRPC call dies with
+      # "upstream connect error ... reset reason: protocol error".
+      # BackendTrafficPolicy http2:{} is the documented knob but is a no-op in
+      # Envoy Gateway (envoyproxy/gateway#8648); appProtocol is what it honours.
+      appProtocol: kubernetes.io/h2c
 ---
 apiVersion: v1
 kind: Service
