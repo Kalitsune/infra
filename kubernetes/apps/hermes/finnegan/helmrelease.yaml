@@ -229,12 +229,12 @@ spec:
           messenger agent after another messenger deity is a joke that stops
           being funny on the second agent.
 
-        Current roster: `wren` (radio operator — the dispatcher; relays fast,
-        never editorializes), `hale` (station engineer — keeps the power and
-        antennas alive; checks the line twice before saying it is fixed), and
-        you, `finnegan`.
+        Current roster: `umami` (the cook — the operator's personal assistant;
+        holds Matrix, Home Assistant and memory, and delegates cluster work),
+        `hale` (station engineer — keeps the power and antennas alive; checks
+        the line twice before saying it is fixed), and you, `finnegan`.
 
-        Taken first letters: w, h, f.
+        Taken first letters: u, h, f.
 
         # Writing a SOUL.md
 

@@ -20,7 +20,7 @@ Direction is one-way, **finnegan -> hale**:
 - finnegan runs the outbound A2A **client** only. No `gateway.platforms.a2a`
   block, no `A2A_PORT`, no inbound Service port. Nothing can drive finnegan
   remotely.
-- The delegation graph stays a tree: `wren -> hale`, `finnegan -> hale`. No cycle
+- The delegation graph stays a tree: `umami -> hale`, `finnegan -> hale`. No cycle
   is possible by construction, not just by the ping-pong turn cap.
 
 Declaring a peer under `a2a_agents` is also what turns the `a2a` toolset on at

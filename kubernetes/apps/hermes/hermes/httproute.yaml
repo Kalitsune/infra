@@ -8,12 +8,13 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    # wren is this agent's name; agents live under <name>.agents.kalitsune.net.
-    # The old hostname stays attached so bookmarks and the Pocket ID launch URL
-    # do not 404 mid-cutover. Login (oauth2-proxy --redirect-url) is registered
-    # on the NEW name only — that argument takes a single value — so the legacy
-    # host serves already-authenticated sessions and redirects new ones.
-    # Drop hermes.kalitsune.net once nothing points at it.
+    # umami is this agent's name; agents live under <name>.agents.kalitsune.net.
+    # The older hostnames stay attached so bookmarks and the Pocket ID launch
+    # URL do not 404 mid-cutover. Login (oauth2-proxy --redirect-url) is
+    # registered on the NEW name only — that argument takes a single value — so
+    # the legacy hosts serve already-authenticated sessions and redirect new
+    # ones. Drop wren./hermes.kalitsune.net once nothing points at them.
+    - umami.agents.kalitsune.net
     - wren.agents.kalitsune.net
     - hermes.kalitsune.net
   rules:
