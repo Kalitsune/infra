@@ -97,8 +97,12 @@ spec:
       model:
         provider: 9router
         default: high-effort
-        roles:
-          aux: fast-af
+      # NOTE: `model.roles.aux` was tried here and is NOT a Hermes config key
+      # (grep the image: only Discord member roles match). It parsed, rolled the
+      # pod, and changed nothing. The real key is `auxiliary.<task>` — see the
+      # sibling hermes/finnegan releases. Left unset here deliberately: this
+      # agent's aux tasks are being moved in a separate, operator-timed commit
+      # because editing this file rolls the StatefulSet mid-session.
       providers:
         9router:
           name: 9router
@@ -284,6 +288,23 @@ spec:
       # of A2A_PEER_TOKENS, i.e. an authenticated peer-token name.
       - name: A2A_TRUSTED_PEERS
         value: "hermes,finnegan"
+      # finnegan's inbound token is read from finnegan's own Secret:
+      # homelab-expert-a2a is whole-file SOPS (operator key only), and one
+      # value cannot drift. Never `optional`: an unresolved $(VAR) stays
+      # literal and would itself be a valid token. Remove with finnegan, or
+      # this pod fails to start. Overrides the envFrom key of the same name.
+      - name: A2A_PEER_TOKENS_HERMES
+        valueFrom:
+          secretKeyRef:
+            name: homelab-expert-a2a
+            key: A2A_PEER_TOKENS
+      - name: A2A_PEER_TOKEN_FINNEGAN
+        valueFrom:
+          secretKeyRef:
+            name: finnegan-a2a
+            key: A2A_TOKEN_HALE
+      - name: A2A_PEER_TOKENS
+        value: "$(A2A_PEER_TOKENS_HERMES),finnegan:$(A2A_PEER_TOKEN_FINNEGAN)"
       # What the Agent Card advertises. NOT the full toolset: this agent holds
       # a cluster-admin kubeconfig and a push-capable deploy key, so it does
       # not advertise `terminal`, `coding`, `code_execution` or `file` to
@@ -598,5 +619,7 @@ spec:
     # generation 6: renamed the agent identity to `hale` (A2A_AGENT_NAME,
     #   API_SERVER_MODEL_NAME, soul.text) and moved the dashboard to
     #   hale.agents.kalitsune.net. Resource names are deliberately unchanged.
+    # generation 8: A2A_PEER_TOKENS composed in env so finnegan's token
+    #   (finnegan-a2a) is accepted alongside wren's.
     podAnnotations:
-      kalitsune.net/env-generation: "7"
+      kalitsune.net/env-generation: "8"

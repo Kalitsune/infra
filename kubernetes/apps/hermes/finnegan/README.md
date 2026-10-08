@@ -36,18 +36,16 @@ localpart. Convention and the current roster live in its `SOUL.md`.
 
 ## What it still needs from the operator
 
-Two things this release cannot create for itself:
+**A Matrix account**, if it should be reachable from chat. That needs
+`mas-cli manage register-user` on the homeserver plus a SOPS Secret with the
+access token — mirror `../homelab-expert/matrix-secret.yaml`. Without it,
+finnegan is reachable through its dashboard and the OpenAI-compatible API only.
 
-1. **The A2A peer token on hale's side.** finnegan presents `A2A_TOKEN_HALE` from
-   the `finnegan-a2a` Secret; hale will reject it until the same value is added to
-   `homelab-expert`'s `A2A_PEER_TOKENS` (SOPS, operator-only) *and* `finnegan` is
-   added to its `A2A_TRUSTED_PEERS`. Until then finnegan runs fine but every
-   `a2a_call` returns 401. The token was generated in-cluster and dropped at
-   `/opt/data/export/finnegan-a2a-token.txt` with the exact steps.
-2. **A Matrix account**, if it should be reachable from chat. That needs
-   `mas-cli manage register-user` on the homeserver plus a SOPS Secret with the
-   access token — mirror `../homelab-expert/matrix-secret.yaml`. Without it,
-   finnegan is reachable through its dashboard and the OpenAI-compatible API only.
+The A2A token needs nothing: hale reads `A2A_TOKEN_HALE` straight from
+`finnegan-a2a` into its `A2A_PEER_TOKENS` (see `../homelab-expert/helmrelease.yaml`),
+so both ends share one value. After rotating it, bump `env-generation` on both
+releases. Removing finnegan means removing those hale env entries too, or hale
+stops starting.
 
 ## Deliberate omissions
 
