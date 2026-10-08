@@ -75,6 +75,41 @@ up at the app layer; there are no TrueNAS snapshots on that class. Staging lives
 on an `emptyDir` so a large audiobook cannot fill the node's ephemeral storage,
 and so Kavita never scans a half-written file.
 
+## The missing chromedriver
+
+The image ships Chromium but **not** the patched chromedriver SeleniumBase
+drives it with (`seleniumbase/drivers/` is empty on a fresh pod). SeleniumBase's
+own `SB()` helper downloads it lazily on first use; the bypasser does not — it
+calls `cdp_driver.start_async()` directly, which only ever looks for an existing
+`uc_driver`. So every Anna's Archive search ended as:
+
+```
+403 detected; switching to bypasser: https://annas-archive.gl/search?...
+Bypasser error: Exception: Failed to connect to the browser
+Search unavailable: Unable to reach download source. Network restricted or mirrors are blocked.
+```
+
+That last line is a lie — DNS, the mirror and the WAN were all fine, and the
+pod was nowhere near its memory limit. `upstream entrypoint.sh` even `chmod +x`'s
+`uc_driver` if it finds one, so the image expects it to be there; nothing puts
+it there. The container `args` now run `sbase get uc_driver` before the
+entrypoint, guarded by an existence test so a restart with a warm driver is a
+no-op. It is not `&&`-chained: if `googlechromelabs.github.io` is unreachable
+the app still boots with a `WARN:` line in the log and only the bypasser is dead.
+
+Checks, in order of what they rule out:
+
+```sh
+kubectl -n media exec deploy/shelfmark -- ls -la /usr/local/lib/python3.10/site-packages/seleniumbase/drivers/uc_driver
+kubectl -n media logs deploy/shelfmark | grep -E "Chrome browser ready|Bypass successful|Bypasser error"
+```
+
+`Chrome browser ready (Pure CDP)` then `Bypass successful using
+_bypass_method_cdp_click` is the working path. A few `Bypass method ... failed.`
+lines before it are normal: the bypasser tries up to 10 methods and the first
+two usually lose. `X11 display failed! Will use regular xvfb!` is also normal —
+there is no X server in the pod and it falls back to Xvfb, which works.
+
 ## First run
 
 The onboarding wizard asks for sources and destinations. The env vars already

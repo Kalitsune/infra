@@ -61,7 +61,22 @@ spec:
           # at 1.0.x and ships schema changes between patch releases.
           image: ghcr.io/calibrain/shelfmark:1.0.4
           command: ["/bin/bash", "-c"]
-          args: ["python3 /custom-cont-init.d/99-patch.py && exec /app/entrypoint.sh"]
+          # `sbase get uc_driver`: the image ships Chromium but NOT the patched
+          # chromedriver SeleniumBase needs (seleniumbase/drivers/ is empty).
+          # SB() downloads it on first use; the bypasser's cdp_driver.start_async
+          # path does not, so every Anna's Archive search died as
+          # `403 detected; switching to bypasser` then `Bypasser error: Failed to
+          # connect to the browser`. Fetching it here is what entrypoint.sh
+          # already expects (it chmod +x's an existing uc_driver at line 206).
+          # Not `&&`-chained: if googlechromelabs is unreachable the app must
+          # still boot -- only the bypasser is dead, and the log says why.
+          args:
+            - |
+              python3 /custom-cont-init.d/99-patch.py
+              [ -f "$(python3 -c 'import pathlib,seleniumbase; print(pathlib.Path(seleniumbase.__file__).parent/"drivers"/"uc_driver")')" ] \
+                || sbase get uc_driver \
+                || echo "WARN: uc_driver fetch failed; AA searches will fail at the bypasser"
+              exec /app/entrypoint.sh
           env:
             - name: PUID
               value: "1000"
