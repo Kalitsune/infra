@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - namespace.yaml
+  - helmrepository.yaml
+  - ../secret.yaml
+  - matrix-secret.yaml
+  - a2a-secret.yaml
+  # NOTE: `secrets.yaml`, plural. The merge in f3a67e2 consolidated
+  # honcho-client-secret.yaml into this file but left the reference here at the
+  # old singular name, which broke `kustomize build` for the whole app — Flux
+  # stopped applying hermes entirely and sat on the previous revision.
+  - secrets.yaml
+  - managed-configmap.yaml
+  - helmrelease.yaml
+  - oauth2-secret.yaml
+  - httproute.yaml
+  - rbac.yaml
+  - hermes-auth-redirect.yaml
+
+# The hermes-profiles ConfigMap and the infra-expert profile secret are gone:
+# that agent now runs as its own release in ../homelab-expert with its own
+# pod, PVC and credentials. This release hosts the default agent only.

@@ -1,0 +1,165 @@
+# Issues one 9Router API key per Hermes agent and publishes them as a Secret
+# the agent pods can consume.
+#
+# WHY A JOB AND NOT AN INIT CONTAINER
+#
+# An init container on the 9router Deployment cannot work: it would wait for
+# the SQLite database that only the MAIN container creates, and the main
+# container never starts until init containers exit. That is a deadlock on any
+# fresh volume — it would appear to work only because this deployment already
+# has a database.
+#
+# A Job also fits the semantics better. Provisioning is a one-shot task, not
+# part of the app's lifecycle, and it must run AFTER 9router is up.
+#
+# CONCURRENT SQLITE ACCESS IS SAFE HERE, narrowly:
+# the PVC is local-path (a node-local filesystem), where SQLite's fcntl()
+# locking works correctly. AGENT.md's warning is about NFS, where it does not.
+# The Job also does one short transaction. Do NOT move this volume to
+# truenas-nfs.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  # The generation is part of the NAME, not just an annotation.
+  #
+  # A completed Job is immutable: Flux applies an updated spec without error
+  # but the Job never re-runs, so a bumped annotation alone silently does
+  # nothing and the change appears to have landed when it has not. The old
+  # workaround was `kubectl -n 9router delete job ...`, which AGENT.md rule 1
+  # forbids — git is the only write path.
+  #
+  # Encoding the generation in the name makes a bump create a NEW object.
+  # The Flux Kustomization for this app has prune: true, so the previous Job
+  # (and its pod) are garbage-collected on the same reconcile. No manual
+  # deletion, and the re-run is declared in git like everything else.
+  #
+  # To force a re-run: bump BOTH the name suffix and the annotation below.
+  #   gen 4: set authMode=both (ssoType alone does not enable OIDC)
+  #   gen 5: enable the Headroom token saver (compression sidecar)
+  #   gen 6: authMode both -> oidc (operator has no password, wants SSO-only)
+  #   gen 7: mint a key for honcho (Secret honcho/9router-honcho-key)
+  #   gen 8: mint a key for tycho (ran before the tycho -> finnegan rename)
+  #   gen 9: mint FINNEGAN_9ROUTER_KEY — gen 8 had already completed when the
+  #          rename landed, and a completed Job is immutable, so the renamed
+  #          agent list never ran and finnegan's model calls 401'd
+  #   gen 10: mint a key for n8n (Secret n8n/9router-n8n-overwrite),
+  #           wrapped as CREDENTIALS_OVERWRITE_DATA
+  name: agents-9router-provision-keys-10
+  namespace: agents
+  annotations:
+    kalitsune.net/provision-generation: "10"
+spec:
+  # Keep the finished pod around so its log (which key was created vs reused)
+  # is inspectable for a day.
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: agents-9router-provision
+    spec:
+      restartPolicy: OnFailure
+      serviceAccountName: 9router-provisioner
+
+      initContainers:
+        # Step 1 — mint or recover the keys, using the app's own image so the
+        # node runtime and better-sqlite3 native bindings match exactly the
+        # ones that wrote the database.
+        - name: mint
+          image: docker.io/decolua/9router:0.5.69@sha256:47c17576ad49f0918d1a455dd412ae4509ee8bc742f17ba0b3327ddc70f35a40
+          # workingDir + NODE_PATH: the script lives on a ConfigMap mount at
+          # /scripts, and Node resolves `require()` by walking node_modules
+          # directories UP from the script's own location — /scripts has no
+          # such ancestor, so better-sqlite3 is invisible from there even
+          # though it ships in this image at /app/node_modules.
+          # Both are set because they fix different halves: workingDir alone
+          # does not help (resolution is relative to the FILE, not cwd), and
+          # NODE_PATH alone leaves relative paths resolving oddly.
+          workingDir: /app
+          command: ["node", "/scripts/provision-keys.js"]
+          env:
+            - name: NODE_PATH
+              value: /app/node_modules
+            # `laptop` is the operator's local agent, not a cluster workload.
+            # Its key lands in the same Secret; read it out with:
+            #   kubectl -n hermes get secret 9router-agent-keys \
+            #     -o jsonpath='{.data.LAPTOP_9ROUTER_KEY}' | base64 -d
+            - name: NINEROUTER_AGENTS
+              value: "hermes,homelabexpert,finnegan,laptop"
+            # OIDC dashboard login, using the SAME Pocket ID client that
+            # oauth2-proxy already uses — same Secret, no second client to
+            # rotate. Pocket ID allows multiple redirect URIs per client, so
+            # both callbacks live on the one registration.
+            - name: OIDC_ISSUER_URL
+              value: https://id.kalitsune.net
+            - name: OIDC_CLIENT_ID
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientId
+            - name: OIDC_CLIENT_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: oauth2-proxy-secret
+                  key: clientSecret
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: provisioned
+              mountPath: /provisioned
+
+      containers:
+        # Step 2 — publish them as a Secret in the hermes namespace. Split
+        # from step 1 because the 9router image has no kubectl, and because
+        # each container then does exactly one thing.
+        - name: publish
+          # registry.k8s.io/kubectl is the canonical upstream image.
+          # NOT bitnami/kubectl: Bitnami moved its public catalogue to
+          # `bitnamilegacy` in Aug 2025, so bitnami/kubectl:1.33.2 no longer
+          # resolves — the tag this Job originally used 404s at pull time.
+          # Pinned to the cluster's own minor version, by digest.
+          #
+          # This image is DISTROLESS: there is no `sh`, so the command below
+          # must invoke kubectl directly rather than wrapping a shell script.
+          # Verified by running `sh -c` in it: "exec: sh: executable file not
+          # found in $PATH".
+          #
+          # `create --dry-run=client -o yaml | apply -f -` is therefore not
+          # available (no shell = no pipe). `kubectl create secret ... ` alone
+          # would fail on re-run because the Secret already exists, so
+          # `--save-config` + `apply` is replaced by a single idempotent
+          # `kubectl apply` of a manifest the mint step writes to the shared
+          # volume — see provision-keys.js, which emits secret.yaml alongside
+          # the key files.
+          image: registry.k8s.io/kubectl:v1.36.1@sha256:d08f476d04d0e30f426f06bc6ff6c38913aaa4591943046b77e2f74a72d3611c
+          args:
+            - apply
+            - --server-side
+            - --force-conflicts
+            - -f
+            - /provisioned/secret.yaml
+          volumeMounts:
+            - name: provisioned
+              mountPath: /provisioned
+              readOnly: true
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              memory: 128Mi
+
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: 9router-data
+        - name: scripts
+          configMap:
+            name: agents-9router-provision
+        # Ferries the minted keys between the two containers without touching
+        # the persistent volume or any log.
+        - name: provisioned
+          emptyDir: {}

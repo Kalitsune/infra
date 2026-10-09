@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/hermes/finnegan
+  path: ./kubernetes/apps/agents/finnegan
   prune: true
   sourceRef:
     kind: GitRepository
@@ -14,7 +14,7 @@ spec:
   # this release reads are all owned by the `hermes` Kustomization. Ordering
   # here avoids a first-run failure on a missing namespace or Secret.
   dependsOn:
-    - name: hermes
+    - name: agents
   decryption:
     provider: sops
     secretRef:

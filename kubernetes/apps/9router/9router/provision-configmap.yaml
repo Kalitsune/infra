@@ -208,7 +208,7 @@ data:
         "kind: Secret",
         "metadata:",
         "  name: 9router-agent-keys",
-        "  namespace: hermes",
+        "  namespace: agents",
         "type: Opaque",
         "data:",
         ...Object.entries(secretData).map(([k, v]) => `  ${k}: ${v}`),

@@ -6,7 +6,7 @@ metadata:
 data:
   # Served verbatim by Envoy as a direct response -- there is no pod, no nginx
   # and no image behind this hostname. Same pattern as
-  # apps/hermes/dashboard/configmap.yaml; read that file's comments too.
+  # apps/agents/dashboard/configmap.yaml; read that file's comments too.
   #
   # The key MUST be `response.body`: that is the only key the HTTPRouteFilter
   # valueRef looks up by name (it silently falls back to "the first value in

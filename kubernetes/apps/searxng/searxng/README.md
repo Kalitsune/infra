@@ -12,7 +12,7 @@ Two consumers, and they reach it by different paths:
 | Hermes agents | `http://searxng.searxng.svc.cluster.local:8080` | in-cluster, no DNS/TLS/gateway in the way |
 
 The agents are configured with `web.search_backend: searxng` and
-`SEARXNG_URL` in their own HelmReleases under `apps/hermes/`. That replaces
+`SEARXNG_URL` in their own HelmReleases under `apps/agents/`. That replaces
 the keyless free-tier search rotation Hermes falls back to by default, which
 is rate-limited and rotates through third parties.
 
@@ -90,7 +90,7 @@ its own belongs on `lab.`, and this is on the apex because the request named
 that hostname and the users are off the home network.
 
 The intended end state is a gateway-native OIDC `SecurityPolicy` on the
-HTTPRoute, exactly like `apps/hermes/dashboard/`. It is a **follow-up commit**
+HTTPRoute, exactly like `apps/agents/dashboard/`. It is a **follow-up commit**
 because it needs a Pocket ID client that only the Pocket ID UI can create:
 `POCKET_ID_API_KEY` answers `401 {"code":"not_signed_in"}` on
 `/api/oidc/clients`.

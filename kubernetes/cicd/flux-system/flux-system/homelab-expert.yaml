@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/hermes/homelab-expert
+  path: ./kubernetes/apps/agents/homelab-expert
   prune: true
   sourceRef:
     kind: GitRepository
@@ -15,7 +15,7 @@ spec:
   # container mounts that release's PVC. Ordering here avoids a first-run
   # failure on a missing namespace or an unbound claim.
   dependsOn:
-    - name: hermes
+    - name: agents
   decryption:
     provider: sops
     secretRef:

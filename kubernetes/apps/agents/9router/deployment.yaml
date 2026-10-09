@@ -1,0 +1,211 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: 9router
+  namespace: agents
+spec:
+  # Singleton by design. State lives in one SQLite file on a ReadWriteOnce
+  # volume; a second replica would open the same database and corrupt it.
+  replicas: 1
+  strategy:
+    # Recreate, not RollingUpdate: the default maxSurge=1 would start the new
+    # pod while the old one still holds the SQLite database open. replicas: 1
+    # does not prevent that overlap on its own. See AGENT.md.
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: 9router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: 9router
+    spec:
+      containers:
+        - name: 9router
+          # Pinned by tag+digest. ghcr.io/decolua/9router carries the same
+          # semver tags and resolves 0.5.69 to this identical digest (both
+          # registries are pushed by the same CI job), so switching registry
+          # is a hostname change and nothing else.
+          image: docker.io/decolua/9router:0.5.95@sha256:4316fefb95ea642d57db885d906b1227b1768b15ac5def314621fd781da7b3f1
+
+          env:
+            # All state (SQLite db, backups, generated jwt-secret, certs) goes
+            # here. Without DATA_DIR the app falls back to ~/.9router inside
+            # the container filesystem, which is lost on every restart.
+            - name: DATA_DIR
+              value: /app/data
+            - name: PORT
+              value: "20128"
+            # Next.js standalone binds to process.env.HOSTNAME. The image
+            # already sets ENV HOSTNAME=0.0.0.0 and that wins over the
+            # HOSTNAME=<pod-name> the kubelet injects (verified by running
+            # this exact image), so this line is belt-and-braces rather than
+            # a fix. Keep it: if a future image drops that ENV, the kubelet
+            # value takes over, the server binds to the pod name only, and
+            # BASE_URL below (http://localhost:20128, used by the app's own
+            # sync jobs) silently stops resolving while the Service still
+            # works — a confusing half-broken state.
+            - name: HOSTNAME
+              value: 0.0.0.0
+            - name: NODE_ENV
+              value: production
+            - name: NEXT_TELEMETRY_DISABLED
+              value: "1"
+            # The app's PUBLIC origin. It is used for two different things:
+            #   1. self-referential calls for its own sync jobs
+            #   2. building the OIDC redirect_uri in /api/auth/oidc/start
+            #
+            # (2) is why this must be the external URL. The builder is:
+            #   BASE_URL || NEXT_PUBLIC_BASE_URL || x-forwarded-proto/host
+            # so with localhost here, the OIDC flow sends Pocket ID a
+            # redirect_uri of http://localhost:20128/api/auth/oidc/callback —
+            # which the browser cannot reach and Pocket ID would reject as an
+            # unregistered URI.
+            #
+            # Setting it to the public origin keeps (1) working: the app
+            # reaches itself through Envoy, and /v1 bypasses oauth2-proxy, so
+            # internal calls do not hit an OIDC redirect.
+            - name: BASE_URL
+              value: https://router.agents.kalitsune.net
+            - name: NEXT_PUBLIC_BASE_URL
+              value: https://router.agents.kalitsune.net
+            # Now served over HTTPS at the public origin, so the auth cookie
+            # can and should carry the Secure flag.
+            - name: AUTH_COOKIE_SECURE
+              value: "true"
+            # Overrides the hardcoded DEFAULT_PASSWORD "123456" fallback in
+            # src/lib/auth/dashboardSession.js. Only used until a password is
+            # set in the dashboard, which persists a bcrypt hash to SQLite.
+          ports:
+            - name: http
+              containerPort: 20128
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          # /api/health is unauthenticated and returns {"ok":true}.
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              memory: 1Gi
+        # Headroom: compression-as-a-service. 9router POSTs the outbound
+        # message array to http://localhost:8787/v1/compress before routing it
+        # upstream, and sends the compressed result instead.
+        #
+        # SIDECAR, not its own Deployment, because /v1/compress is loopback
+        # gated: the proxy checks BOTH the client IP and the inbound Host
+        # header name loopback, and non-loopback callers get 404 (not 403 —
+        # the route stays invisible to scanners). Sharing a pod network
+        # namespace satisfies that with no opt-out flag, so
+        # HEADROOM_COMPRESS_ALLOW_REMOTE stays unset and the endpoint is
+        # unreachable from anywhere else in the cluster. A separate Deployment
+        # would need that flag plus a NetworkPolicy to be equally safe.
+        - name: headroom
+          # :latest is the only moving tag published; the version tags are
+          # git-sha based (sha-<short>), not semver. Pinned by digest so this
+          # is reproducible — bump the digest deliberately to upgrade.
+          image: ghcr.io/headroomlabs-ai/headroom:latest@sha256:35b799e94eef4644cb15a2e695b4b99698fe7668614623e9338cb10c10ececf9
+          # --host 127.0.0.1 keeps the listener off the pod IP entirely, so
+          # only the 9router container in this pod can reach it.
+          command:
+            - headroom
+            - proxy
+            - --host
+            - 127.0.0.1
+            - --port
+            - "8787"
+          env:
+            # The proxy writes its CCR store and caches under $HOME. The image
+            # has no writable home for uid 1000, so point it at the emptyDir
+            # below; without this it falls back to a read-only path and the
+            # compression pipeline degrades.
+            - name: HOME
+              value: /tmp/headroom
+            # Anonymous telemetry beacon off. Also covered by DO_NOT_TRACK.
+            - name: HEADROOM_BEACON
+              value: "off"
+            - name: DO_NOT_TRACK
+              value: "1"
+          volumeMounts:
+            - name: headroom-home
+              mountPath: /tmp/headroom
+          # Loopback-only listener, so the probes cannot use httpGet (the
+          # kubelet connects from outside the pod netns and would be refused).
+          # A python one-liner inside the container is the only honest check.
+          readinessProbe:
+            exec:
+              command:
+                - python
+                - -c
+                - |
+                  import socket,sys
+                  s=socket.socket(); s.settimeout(3)
+                  sys.exit(s.connect_ex(("127.0.0.1",8787)))
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            seccompProfile:
+              type: RuntimeDefault
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            # Compression is CPU- and memory-bound and runs per request. The
+            # limit is generous because an OOMKill here takes the whole pod's
+            # 9router container down with it — they share a lifecycle.
+            limits:
+              memory: 2Gi
+      # No securityContext: the image entrypoint runs as root to chown the
+      # mounted volume, then drops to the node user via su-exec. Cluster PSA
+      # enforces baseline (restricted only warns), which permits that.
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: 9router-data
+        # Scratch space for Headroom's CCR store and caches. Deliberately
+        # ephemeral: the originals it holds are only needed for the lifetime of
+        # a conversation, and 9router's own durable state lives on the PVC.
+        - name: headroom-home
+          emptyDir:
+            sizeLimit: 2Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: 9router
+  namespace: agents
+spec:
+  # Internal only, as requested: no HTTPRoute, no Gateway listener, no DNS
+  # record. Reachable from inside the cluster at
+  # http://9router.9router.svc.cluster.local:20128
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: 9router
+  ports:
+    - name: http
+      port: 20128
+      targetPort: http

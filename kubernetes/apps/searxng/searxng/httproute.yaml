@@ -37,7 +37,7 @@ spec:
     # UI can create: POCKET_ID_API_KEY answers
     # `401 {"code":"not_signed_in"}` on /api/oidc/clients. Hand over the
     # client ID + secret and the policy is ~15 lines, copied from
-    # apps/hermes/dashboard/httproute.yaml.
+    # apps/agents/dashboard/httproute.yaml.
     - search.kalitsune.net
   rules:
     - backendRefs:
