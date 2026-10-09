@@ -34,14 +34,14 @@ data:
     # address and advertise the public one.
     #
     # This IS a hardcoded WAN address, and that is a known weakness: the zone
-    # keeps geod.es as its single dynamic-DNS anchor (TTL 60) and
+    # keeps lab.kalitsune.net as its single dynamic-DNS anchor (TTL 60) and
     # every hostname CNAMEs to it, so DNS follows a WAN change automatically
     # while this line does not. AGENT.md notes the connection periodically
     # fails over to 4G, which changes the public IP.
     #
     # coturn resolves external-ip only at startup, so a hostname here would
     # be no better. If calls start failing after a WAN flip, compare this
-    # against `dig +short geod.es` — a mismatch is the cause, and
+    # against `dig +short lab.kalitsune.net` — a mismatch is the cause, and
     # restarting the Deployment is not enough; this value must be updated.
     external-ip=82.64.31.214/192.168.1.171
 

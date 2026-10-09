@@ -8,11 +8,11 @@ the `hermes` A2A dispatcher.
 
 ## Reaching it
 
-Published at **<https://9router.geod.es>**, behind Pocket ID OIDC.
+Published at **<https://9router.lab.kalitsune.net>**, behind Pocket ID OIDC.
 
 | | |
 | --- | --- |
-| Public URL | `https://9router.geod.es` (OIDC required) |
+| Public URL | `https://9router.lab.kalitsune.net` (OIDC required) |
 | Service | `9router` in namespace `9router` |
 | Cluster DNS | `9router.9router.svc.cluster.local` |
 | Port | `20128` |
@@ -39,7 +39,7 @@ acceptable only because the Service was unreachable from outside the cluster.
 
 Publishing it reverses that, so Pocket ID OIDC is the real gate and the
 dashboard password becomes a second factor. The `lab.` suffix is a naming
-convention and enforces nothing on its own: `*.geod.es` resolves
+convention and enforces nothing on its own: `*.lab.kalitsune.net` resolves
 publicly and binds to the same Gateway listener as every other host.
 
 Only `/api/health` skips authentication, so probes keep working. The `/api`

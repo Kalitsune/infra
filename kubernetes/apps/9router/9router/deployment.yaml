@@ -66,9 +66,9 @@ spec:
             # reaches itself through Envoy, and /v1 bypasses oauth2-proxy, so
             # internal calls do not hit an OIDC redirect.
             - name: BASE_URL
-              value: https://9router.geod.es
+              value: https://9router.lab.kalitsune.net
             - name: NEXT_PUBLIC_BASE_URL
-              value: https://9router.geod.es
+              value: https://9router.lab.kalitsune.net
             # Now served over HTTPS at the public origin, so the auth cookie
             # can and should carry the Secure flag.
             - name: AUTH_COOKIE_SECURE

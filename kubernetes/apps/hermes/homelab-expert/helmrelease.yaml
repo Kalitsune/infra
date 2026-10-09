@@ -1,0 +1,642 @@
+# Isolated Hermes release for the homelab-expert agent.
+#
+# WHY THIS EXISTS AS A SEPARATE RELEASE
+#
+# The original design ran both agents as profiles inside ONE pod with
+# `gateway.multiplex_profiles: true`. Secret *plumbing* was correct — the
+# infra credentials were mounted only into the infra-expert profile's own
+# directory and never appeared in the default profile's .env — but that is not
+# an isolation boundary, because:
+#
+#   * The NFS export squashes every UID to 3001. A file written by the
+#     container's uid 10000 lands owned by 3001, so mode 0600 means "readable
+#     by 3001" == readable by every process on the volume. Verified by writing
+#     a probe file as uid 10000 and reading back uid=3001, and by reading the
+#     0600 deploy key from a session running as a different uid.
+#   * Both profiles were the SAME OS process (multiplexing), on the SAME
+#     volume, as the SAME uid. Only path separation stood between them.
+#   * The default profile sets no `toolsets` key, so it gets the default set
+#     including `terminal` — i.e. it could simply `cat` the other profile's
+#     credentials.
+#
+# The exposed material was a cluster-admin kubeconfig
+# (`kubectl auth can-i get secrets -A` -> yes) and the push-capable infra
+# deploy key. Since the default agent auto-accepts room invites and talks to
+# anyone in its allowlist, a prompt injection there was a full cluster-admin
+# and repo-write compromise.
+#
+# THE FIX IS PROCESS + VOLUME SEPARATION, NOT TIGHTER FILE MODES.
+# This release runs its own pod, with its own PVC (own NFS export path), its
+# own gateway process, and multiplexing OFF. The infra secret is mounted only
+# here. File modes are irrelevant once the volume itself is not shared.
+#
+# The operator is separately fixing the NFS export's UID squashing; these two
+# changes are complementary, and neither alone is sufficient.
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: homelab-expert
+  namespace: hermes
+spec:
+  interval: 30m
+  chart:
+    spec:
+      chart: hermes-agent
+      # Matches the sibling hermes release: open to 1.14.x with the VCT labels
+      # frozen via postRenderers below. See that release for the full reasoning
+      # on why the labels must be frozen rather than left to track the chart.
+      version: 1.14.x
+      sourceRef:
+        kind: HelmRepository
+        name: hermes-agent
+        namespace: flux-system
+  install:
+    remediation:
+      retries: 3
+  upgrade:
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  # Freeze the two chart-version labels the chart stamps onto the PVC template.
+  # The live StatefulSet has these values (verified with kubectl get sts):
+  #   helm.sh/chart: hermes-agent-1.13.0
+  #   app.kubernetes.io/version: v2026.8.31
+  # See the sibling hermes release for the full explanation.
+  postRenderers:
+    - kustomize:
+        patches:
+          - target:
+              version: v1
+              kind: StatefulSet
+              name: homelab-expert
+            patch: |
+              - op: replace
+                path: /spec/volumeClaimTemplates/0/metadata/labels/helm.sh~1chart
+                value: hermes-agent-1.13.0
+              - op: replace
+                path: /spec/volumeClaimTemplates/0/metadata/labels/app.kubernetes.io~1version
+                value: v2026.8.31
+  values:
+    # Keep resource names short and stable. Without this the chart would
+    # generate `homelab-expert-hermes-agent`; the StatefulSet's
+    # volumeClaimTemplates name is baked into the PVC name, so changing this
+    # later orphans the volume.
+    fullnameOverride: homelab-expert
+    # THE agent identity for this pod. This profile is the ROOT profile here
+    # (HERMES_HOME=/opt/data), not a sub-profile, so there is no
+    # profiles/<name>/ directory and no multiplexing. That is the point: one
+    # process, one identity, one credential set.
+    #
+    # Multiplexing is deliberately NOT enabled. Re-enabling it would put a
+    # second identity back inside this process and undo the isolation.
+    config:
+      # Routed through 9Router — see the sibling hermes release for the full
+      # reasoning. Upstream credentials live in 9Router's provider connections;
+      # this agent presents only its own minted key.
+      model:
+        provider: 9router
+        default: high-effort
+      # NOTE: `model.roles.aux` was tried here and is NOT a Hermes config key
+      # (grep the image: only Discord member roles match). It parsed, rolled the
+      # pod, and changed nothing. The real key is `auxiliary.<task>` — see the
+      # sibling hermes/finnegan releases. Left unset here deliberately: this
+      # agent's aux tasks are being moved in a separate, operator-timed commit
+      # because editing this file rolls the StatefulSet mid-session.
+      providers:
+        9router:
+          name: 9router
+          base_url: http://9router.9router.svc.cluster.local:20128/v1
+          key_env: HOMELAB_EXPERT_9ROUTER_KEY
+      # web_search goes to the in-cluster SearXNG (apps/searxng) over Service
+      # DNS — no public DNS, no TLS, and not subject to the 60/min edge rate
+      # limit on search.kalitsune.net. SEARXNG_URL is in extraEnv.
+      #
+      # `extract_backend` is mandatory alongside it: SearXNG is search-only,
+      # but naming `search_backend` alone makes `selection_exists("web")` true,
+      # which both short-circuits autodetect and drops the keyless ladder — the
+      # measured result is `extract = searxng`, a provider with no extract at
+      # all. See the sibling hermes release for the full reasoning.
+      web:
+        search_backend: searxng
+        extract_backend: firecrawl
+      agent:
+        reasoning_effort: max
+      # Enables the inbound A2A server. The adapter also honours A2A_PORT from
+      # the env above; this is the declarative half that makes the platform
+      # load at all.
+      gateway:
+        platforms:
+          a2a:
+            enabled: true
+            extra:
+              port: 9900
+      toolsets:
+        - terminal
+        - file
+        - coding
+        - debugging
+        - code_execution
+        - web
+        - search
+        - vision
+        - memory
+        - context_engine
+        - safe
+        - clarify
+        - session_search
+        - skills
+        - todo
+      mcp_servers:
+        dashboard-icons:
+          command: "npx"
+          args:
+            - "-y"
+            - "mcp-remote"
+            - "https://dashboardicons.com/api/mcp"
+        radar:
+          url: http://radar.radar.svc.cluster.local:9280/mcp-readonly
+          tools:
+            exclude:
+              - query_prometheus
+              - discover_metrics
+              - get_prometheus_rules
+              - get_cost
+            prompts: false
+            resources: false
+    # overwrite: true — config.yaml is rewritten from chart values on every pod
+    # restart. Model and provider config is managed in git via this HelmRelease,
+    # so runtime edits to config.yaml are not load-bearing and resetting them is
+    # acceptable. SOUL.md is handled separately by the sync-soul init container.
+    bootstrap:
+      enabled: true
+      overwrite: true
+    soul:
+      text: |
+        # Identity
+
+        You are hale, the station engineer.
+
+        The relay station sits in a valley with no road out, and everything here runs on what the crew keeps alive. You keep the power and the antennas up. You check the line twice before you say it is fixed.
+
+        Single mandate: deploy, maintain, and diagnose services via GitOps — never by touching the cluster directly.
+
+        Read `AGENT.md` at the repository root before acting. It is the authoritative operating manual: infrastructure details, golden rules, toolchain, conventions, storage, networking, verification procedure, and when to stop and ask. Do not rely on memory for anything it covers. When the repository is not yet checked out, clone it first.
+
+        # Session secrets
+
+        Three credentials arrive as **base64-encoded** environment variables, seeded into `/opt/data/.env` by an init container. The names below are the Secret's own key names — not the conventional tool names. In particular the kubeconfig is `KUBE_CONFIG`, **not** `KUBECONFIG`.
+
+        ```sh
+        umask 077
+        printf '%s' "$GITHUB_DEPLOY_KEY" | base64 -d > /tmp/id_infra    # ed25519 deploy key, push-capable
+        printf '%s' "$KUBE_CONFIG"       | base64 -d > /tmp/kubeconfig  # cluster-admin
+        REPO=$(printf '%s' "$GITHUB_REPO" | base64 -d)                  # git@github.com:kalitsune/infra
+        chmod 600 /tmp/id_infra /tmp/kubeconfig
+        export KUBECONFIG=/tmp/kubeconfig
+        export GIT_SSH_COMMAND="ssh -i /tmp/id_infra -o StrictHostKeyChecking=no"
+        ```
+
+        They are multi-line blobs, which is why they are stored encoded — a bare shell variable truncates at the first newline. Decode into `/tmp`, never into the repo and never onto `/opt/data`: that volume is NFS and persists across restarts.
+
+        # Runtime environment
+
+        Unprivileged user inside a Kubernetes pod: no root, no sudo, no package manager. `$HOME` is `/opt/data/home` on the NFS data volume and survives pod restarts; `/tmp` does not.
+
+        **No cluster tooling is preinstalled.** `kubectl`, `flux`, `helm`, `kustomize`, `sops`, `cilium`, `jq` and `yq` are all absent on a fresh pod — fetch static `linux/amd64` binaries into `~/.local/bin` and `chmod +x` them. That directory is **not** on the default `PATH`; export it. Only `git` and `curl` are already there. Never assume `apt`/`apk` exist or will succeed.
+
+        # What you cannot do
+
+        - **You cannot decrypt SOPS secrets.** The repo encrypts to an age key held by the operator; `SOPS_AGE_KEY_FILE` is set but points at a file that does not exist, so `sops -d` fails on every file under `kubernetes/`. Changing a secret *value* is the operator's job — say so instead of attempting it. Editing manifests that *reference* a secret is normal work.
+        - `tofu` and `talosctl` are absent by design — see AGENT.md.
+
+        # Editing this prompt
+
+        This text is `spec.values.soul.text` in `kubernetes/apps/hermes/homelab-expert/helmrelease.yaml`. Editing it rewrites the `homelab-expert-config` ConfigMap, whose checksum annotation rolls the StatefulSet — which terminates the session you are running in. Warn the operator before pushing such a change.
+
+        # Naming
+
+        The agent identity here is `hale`; `homelab-expert` is the surviving Kubernetes resource name (HelmRelease, StatefulSet, Service, PVC, directory). They differ on purpose: a StatefulSet's volumeClaimTemplates name is baked into its PVC name, so renaming those objects would orphan the volume. Dashboard is `hale.agents.kalitsune.net`; `homelab-expert.hermes.kalitsune.net` still resolves during the cutover. The Matrix account is still `@hermes-homelab-expert`.
+
+        Peers: `wren` (the dispatcher, outbound A2A — still resource-named `hermes`) and `finnegan` (writes new agents' SOUL.md and delegates their implementation to you).
+
+
+        # Repository Discoveries
+
+        - **Open WebUI**: SQLite is default, needs `local-path` PVC. Needs `WEBUI_SECRET_KEY` randomly generated into a SOPS secret. Pocket ID SSO needs `OAUTH_CODE_CHALLENGE_METHOD: S256` (PKCE) in extraEnvVars. Override `OPENAI_API_KEY` to `""` in extraEnvVars to clear the baked-in default when configuring custom `openaiBaseApiUrls`.
+        - **DNS**: Use CNAME to `lab.kalitsune.net` for exposed services.
+        - **Secrets**: Generate SOPS secrets with `scripts/new-sops-secret.sh` from the `gitops-cluster-operations` skill.
+
+        # Style
+
+        Terse, technically precise. Report failures with the exact command and exact error.
+        State "verified to layer N, could not check layer N+1" rather than claiming full success.
+    controller:
+      type: statefulset
+    # Its OWN volume. This is the isolation boundary that actually holds:
+    # a distinct NFS export path, so UID squashing on the server cannot
+    # expose these files to the other release's pod.
+    persistence:
+      enabled: true
+      storageClass: truenas-nfs
+      accessModes:
+        - ReadWriteMany
+      size: 5Gi
+    # Sized from the measured floor of the shared pod (~1 GiB anon RSS) rather
+    # than the chart defaults. A request far below real usage drives
+    # oom_score_adj toward 1000 and elects this pod as the node's first OOM
+    # victim. See the sibling release's resources block for the full RCA.
+    resources:
+      requests:
+        cpu: 100m
+        memory: 1Gi
+      limits:
+        memory: 4Gi
+    env:
+      OPENAI_API_KEY: ""
+    extraEnv:
+      # SearXNG instance for web_search, selected by `config.web` above.
+      # Service DNS keeps the call inside the cluster — see the sibling
+      # hermes release for why that is preferred over the public hostname.
+      - name: SEARXNG_URL
+        value: "http://searxng.searxng.svc.cluster.local:8080"
+      - name: API_SERVER_ENABLED
+        value: "true"
+      - name: API_SERVER_HOST
+        value: "0.0.0.0"
+      - name: API_SERVER_PORT
+        value: "8642"
+      # API_SERVER_KEY is deliberately NOT set here. The agent loads
+      # /opt/data/.env via python-dotenv, which OVERRIDES the container
+      # environment, so any value injected here is silently ignored and
+      # every caller gets 401 gateway_auth_failed. The operator-managed
+      # key in that .env is the only one that authenticates; the Open
+      # WebUI Secret mirrors it. Pointing this at a non-existent Secret
+      # key also yields CreateContainerConfigError and a Helm rollback
+      # loop that reverts every other mutable change in the release.
+      # Chat-facing label only: "<person> - <station role>". The identity in
+      # every machine-readable place (localpart, hostname, resource names)
+      # is unchanged — this string is what a human reads in Open WebUI's
+      # model picker, so it carries the role too.
+      - name: API_SERVER_MODEL_NAME
+        value: "Hale - Homelab Expert"
+      # --- A2A inbound (this agent is the callable specialist) ---
+      #
+      # Direction is deliberate: hermes dispatches TO here. This release runs
+      # the inbound server; it is not given the outbound client tools, so it
+      # can answer a task but cannot initiate one. That keeps the delegation
+      # graph acyclic by construction rather than by turn-cap alone.
+      - name: A2A_PORT
+        value: "9900"
+      # Binds beyond loopback ONLY because a token is configured
+      # (A2A_PEER_TOKENS, via the homelab-expert-a2a Secret). Without one the
+      # adapter ignores this and pins 127.0.0.1 — deliberate, see
+      # security.resolve_bind_host().
+      - name: A2A_HOST
+        value: "0.0.0.0"
+      - name: A2A_AGENT_NAME
+        value: "hale"
+      - name: A2A_AGENT_DESCRIPTION
+        value: >-
+          Kubernetes and GitOps specialist for the kalitsune homelab. Deploys, diagnoses and repairs cluster workloads by committing to the infra repo and letting Flux converge.
+      - name: A2A_PUBLIC_URL
+        value: "http://homelab-expert.hermes.svc.cluster.local:9900"
+      # Only this identity may run tasks. The name matches the left-hand side
+      # of A2A_PEER_TOKENS, i.e. an authenticated peer-token name.
+      - name: A2A_TRUSTED_PEERS
+        value: "hermes,finnegan"
+      # finnegan's inbound token is read from finnegan's own Secret:
+      # homelab-expert-a2a is whole-file SOPS (operator key only), and one
+      # value cannot drift. Never `optional`: an unresolved $(VAR) stays
+      # literal and would itself be a valid token. Remove with finnegan, or
+      # this pod fails to start. Overrides the envFrom key of the same name.
+      - name: A2A_PEER_TOKENS_HERMES
+        valueFrom:
+          secretKeyRef:
+            name: homelab-expert-a2a
+            key: A2A_PEER_TOKENS
+      - name: A2A_PEER_TOKEN_FINNEGAN
+        valueFrom:
+          secretKeyRef:
+            name: finnegan-a2a
+            key: A2A_TOKEN_HALE
+      - name: A2A_PEER_TOKENS
+        value: "$(A2A_PEER_TOKENS_HERMES),finnegan:$(A2A_PEER_TOKEN_FINNEGAN)"
+      # What the Agent Card advertises. NOT the full toolset: this agent holds
+      # a cluster-admin kubeconfig and a push-capable deploy key, so it does
+      # not advertise `terminal`, `coding`, `code_execution` or `file` to
+      # peers. Inbound text is already framed as untrusted and stripped of
+      # slash commands, but advertising less is the cheaper guarantee.
+      - name: A2A_ADVERTISED_TOOLSETS
+        value: "search,web,debugging,todo"
+      # Anti-loop cap per context. Belt and braces given the one-directional
+      # design above.
+      - name: A2A_MAX_PINGPONG_TURNS
+        value: "5"
+      - name: HASS_URL
+        value: "http://192.168.1.164"
+      # Group-room threading policy. Read via bare os.getenv() in the Matrix
+      # adapter, so the process env is the correct home. auto_thread=false
+      # stops every answered group message from spawning a one-reply thread;
+      # session_scope=room keeps unthreaded room messages in one stable
+      # session. Real threads a human starts are still honoured.
+      - name: MATRIX_AUTO_THREAD
+        value: "false"
+      - name: MATRIX_SESSION_SCOPE
+        value: "room"
+      - name: HERMES_DASHBOARD
+        value: "1"
+      - name: HERMES_DASHBOARD_HOST
+        value: "127.0.0.1"
+      - name: HERMES_DASHBOARD_PUBLIC_URL
+        value: "https://hale.agents.kalitsune.net"
+      - name: HERMES_DASHBOARD_OIDC_ISSUER
+        value: "https://id.kalitsune.net"
+      - name: HERMES_DASHBOARD_OIDC_CLIENT_ID
+        valueFrom:
+          secretKeyRef:
+            name: oauth2-proxy-secret
+            key: clientId
+      - name: HERMES_DASHBOARD_OIDC_CLIENT_SECRET
+        valueFrom:
+          secretKeyRef:
+            name: oauth2-proxy-secret
+            key: clientSecret
+    # Credentials. Both Secrets are mounted ONLY into this release — that is
+    # the whole point of the split.
+    #
+    # hermes-matrix-secrets carries this agent's own Matrix account, and
+    # homelab-expert-secrets carries the infra deploy key + kubeconfig.
+    # Unlike the multiplexed setup, there is no second profile in this process
+    # that could read them, so envFrom is safe here and the per-profile .env
+    # seeding dance is unnecessary.
+    extraEnvFrom:
+      - secretRef:
+          name: hermes-secrets
+      - secretRef:
+          name: homelab-expert-matrix-secrets
+      # Inbound A2A credential. A2A_PEER_TOKENS maps a presented token to an
+      # authenticated identity ("hermes"), and that authenticated name — never
+      # anything the request body claims — is what rate limiting, the trust
+      # gate and the audit log key on.
+      - secretRef:
+          name: homelab-expert-a2a
+          # MATRIX_RECOVERY_KEY now lives in the Secret above rather than in its
+          # own file. The agent originally had to split it out because it cannot
+          # decrypt SOPS (adding a key to an encrypted file needs the private
+          # key), but the operator holds that key and folded it back in — one
+          # Secret per identity is the better shape, so the workaround is gone.
+          #
+          # It must be THIS account's key, not @hermes'. They are separate Matrix
+          # accounts with different self-signing keys, so the wrong one fails with
+          # "Key MAC does not match" (the case _scoped_recovery_key() documents).
+      # 9Router API key (HOMELAB_EXPERT_9ROUTER_KEY), referenced by
+      # config.providers.9router.key_env above. Created by the provisioning
+      # Job in apps/9router; optional so a first-ever deploy does not block on
+      # the Job having run.
+      - secretRef:
+          name: 9router-agent-keys
+          optional: true
+    extraVolumes:
+      # NOTE: this Secret is still named `hermes-infra-expert-secrets`.
+      # Its SOPS metadata (apiVersion/kind/metadata) is itself encrypted, so
+      # the name cannot be rewritten without the age private key, which lives
+      # with the operator. Renaming it is cosmetic and can happen later with
+      # `sops` in hand; the isolation does not depend on the name.
+      - name: infra-secrets
+        secret:
+          secretName: hermes-infra-expert-secrets
+          defaultMode: 0400
+      # The honcho-client-secrets volume is gone: HONCHO_API_KEY was folded
+      # into the global hermes-secrets in 0b95fd1, so Flux pruned that Secret
+      # and a volume referencing it would stop this pod from starting.
+      # The key now arrives as an env var via extraEnvFrom instead.
+      - name: hermes-managed
+        configMap:
+          name: hermes-managed
+    extraVolumeMounts:
+      - name: hermes-managed
+        mountPath: /etc/hermes
+        readOnly: true
+    extraInitContainers:
+      # SOUL.md is this agent's system prompt, so git must win over whatever is
+      # on the data volume. The chart's own seed step runs with overwrite:false
+      # — right for config.yaml, which the agent rewrites at runtime, but fatal
+      # for the prompt: the file already exists after first boot, so the seed is
+      # skipped and an edited soul.text never lands. The ConfigMap checksum
+      # still rolls the pod, so the symptom is a restart that changes nothing.
+      # Copy unconditionally instead; config.yaml keeps the seed semantics.
+      - name: sync-soul
+        image: busybox:1.38
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            if [ ! -f /seed/SOUL.md ]; then
+              echo "no SOUL.md in ConfigMap, nothing to sync"
+              exit 0
+            fi
+            if cmp -s /seed/SOUL.md /opt/data/SOUL.md 2>/dev/null; then
+              echo "SOUL.md already current"
+            else
+              cp /seed/SOUL.md /opt/data/SOUL.md
+              echo "SOUL.md synced from ConfigMap"
+            fi
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+          - name: config
+            mountPath: /seed
+            readOnly: true
+      # The Honcho memory plugin ships in the image but its SDK does not.
+      # Hermes seals its own venv and redirects runtime installs to
+      # HERMES_LAZY_INSTALL_TARGET on the data volume, which hermes_bootstrap
+      # appends to sys.path at startup — so install into that same directory.
+      #
+      # --no-deps is deliberate: honcho-ai needs only httpx>=0.28 and
+      # pydantic>=2, both already present at compatible versions. Pulling its
+      # own copies into an append-only path risks two pydantic versions in one
+      # interpreter.
+      - name: install-honcho-sdk
+        image: nousresearch/hermes-agent:v2026.8.31
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+            target=/opt/data/lazy-packages
+            mkdir -p "$target"
+            if [ -d "$target/honcho" ]; then
+              echo "honcho-ai already present, skipping"
+              exit 0
+            fi
+            uv pip install --target "$target" --no-deps 'honcho-ai==2.2.0'
+            echo "installed honcho-ai into $target"
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+      - name: seed-agent-home
+        image: busybox:1.38
+        # Explicit secretKeyRef: the chart attaches extraEnvFrom only to the
+        # main container, so an init container inherits none of it (verified by
+        # rendering the chart — this container has 0 envFrom entries). Without
+        # it, HONCHO_API_KEY would be empty and the ${VAR:?} guard below would
+        # abort the pod.
+        env:
+          - name: HONCHO_API_KEY
+            valueFrom:
+              secretKeyRef:
+                name: hermes-secrets
+                key: HONCHO_API_KEY
+        command:
+          - sh
+          - -c
+          - |
+            set -eu
+
+            # Infra credentials -> .env, base64-encoded.
+            #
+            # These are multi-line blobs (an SSH key, a kubeconfig). A shell
+            # env var silently truncates at the first newline, so they are
+            # stored encoded and decoded on use by bin/env.sh. The agent's
+            # bootstrap script knows this convention.
+            # Rebuild the managed block from whatever keys the Secret
+            # actually carries, rather than a hardcoded list — a new key
+            # (CLOUDFLARE_API_KEY was added this way) then needs no edit
+            # here, and a REMOVED key does not linger as a stale line.
+            env_file=/opt/data/.env
+            touch "$env_file"
+            chmod 600 "$env_file"
+            managed=""
+            for f in /infra-secrets/*; do
+              [ -f "$f" ] || continue
+              managed="${managed}${managed:+|}${f##*/}"
+            done
+            if [ -n "$managed" ]; then
+              grep -vE "^($managed)=" \
+                "$env_file" > "$env_file.tmp" 2>/dev/null || : > "$env_file.tmp"
+              mv "$env_file.tmp" "$env_file"
+            fi
+            for f in /infra-secrets/*; do
+              [ -f "$f" ] || continue
+              key="${f##*/}"
+              printf '%s=%s\n' "$key" "$(base64 -w0 "$f")" >> "$env_file"
+            done
+            chown 10000:10000 "$env_file"
+            chmod 600 "$env_file"
+            echo "seeded infra credentials into $env_file ($(echo "$managed" | tr '|' ' '))"
+
+            # Honcho memory config. Written at the Hermes root because this
+            # profile IS the root profile here. peerName is shared with the
+            # other release so both agents see one view of the user, while
+            # each keeps its own AI peer and therefore its own self-model.
+            api_key="${HONCHO_API_KEY:?HONCHO_API_KEY missing from env}"
+            cat > /opt/data/honcho.json <<EOF
+            {
+              "enabled": true,
+              "baseUrl": "http://honcho.honcho.svc.cluster.local:8000",
+              "apiKey": "$api_key",
+              "workspace": "hermes",
+              "peerName": "kalitsune",
+              "recallMode": "hybrid",
+              "writeFrequency": "async",
+              "sessionStrategy": "global",
+              "saveMessages": true
+            }
+            EOF
+            chown 10000:10000 /opt/data/honcho.json
+            chmod 600 /opt/data/honcho.json
+            echo "seeded honcho.json"
+        volumeMounts:
+          - name: data
+            mountPath: /opt/data
+          - name: infra-secrets
+            mountPath: /infra-secrets
+            readOnly: true
+    service:
+      enabled: true
+      ports:
+        - name: oauth2-proxy
+          port: 4180
+          targetPort: 4180
+        # A2A inbound. Deliberately NOT routed through the HTTPRoute or
+        # oauth2-proxy: this is a cluster-internal, token-authenticated
+        # machine interface, not a browser surface. Reachable only as
+        # homelab-expert.hermes.svc.cluster.local:9900.
+        - name: a2a
+          port: 9900
+          targetPort: 9900
+        - name: api
+          port: 8642
+          targetPort: 8642
+    extraContainers:
+      - name: oauth2-proxy
+        image: quay.io/oauth2-proxy/oauth2-proxy:v7.8.1
+        args:
+          - --provider=oidc
+          - --oidc-issuer-url=https://id.kalitsune.net
+          - --redirect-url=https://hale.agents.kalitsune.net/oauth2/callback
+          - --upstream=http://127.0.0.1:9119
+          - --http-address=0.0.0.0:4180
+          - --email-domain=*
+          - --cookie-secure=true
+          - --cookie-name=_oauth2_proxy_homelab_expert
+          - --session-store-type=cookie
+          - --banner="-"
+          - --skip-provider-button=true
+          - --code-challenge-method=S256
+        env:
+          - name: OAUTH2_PROXY_CLIENT_ID
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: clientId
+          - name: OAUTH2_PROXY_CLIENT_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: clientSecret
+          - name: OAUTH2_PROXY_COOKIE_SECRET
+            valueFrom:
+              secretKeyRef:
+                name: oauth2-proxy-secret
+                key: cookieSecret
+        ports:
+          - name: http
+            containerPort: 4180
+        resources:
+          requests:
+            cpu: 50m
+            memory: 64Mi
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        securityContext: {}
+    # Bump whenever a value consumed through envFrom changes — most often a
+    # rotated MATRIX_ACCESS_TOKEN. A Secret read via envFrom is injected ONCE
+    # at container start; editing it does NOT roll a StatefulSet, so the
+    # process keeps the OLD value while Flux reports Ready.
+    # generation 2: added MATRIX_RECOVERY_KEY (homelab-expert-matrix-recovery)
+    #   so cross-signing verification runs at startup. This account already had
+    #   master + self_signing keys on the server, so the adapter's auto-
+    #   bootstrap branch (`own_xsign is None`) never fired and the live device
+    #   stayed unsigned — Element showed "not verified by its owner" while E2EE
+    #   itself worked fine. Verified offline before commit: the key's MAC
+    #   matches this account's own SSSS metadata.
+    # generation 3: enabled inbound A2A (homelab-expert-a2a Secret, port 9900,
+    #   restricted advertised toolsets) so hermes can dispatch tasks here.
+    # generation 4: added 9router-agent-keys envFrom
+    #   (HOMELAB_EXPERT_9ROUTER_KEY), consumed by
+    #   config.providers.9router.key_env.
+    # generation 5: model provider switched to 9router (cc/claude-opus-5).
+    # generation 6: renamed the agent identity to `hale` (A2A_AGENT_NAME,
+    #   API_SERVER_MODEL_NAME, soul.text) and moved the dashboard to
+    #   hale.agents.kalitsune.net. Resource names are deliberately unchanged.
+    # generation 8: A2A_PEER_TOKENS composed in env so finnegan's token
+    #   (finnegan-a2a) is accepted alongside wren's.
+    podAnnotations:
+      kalitsune.net/env-generation: "8"

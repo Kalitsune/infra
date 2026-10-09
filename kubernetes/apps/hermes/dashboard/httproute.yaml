@@ -1,0 +1,78 @@
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: HTTPRouteFilter
+metadata:
+  name: agents-dashboard
+  namespace: hermes
+spec:
+  directResponse:
+    contentType: text/html
+    statusCode: 200
+    body:
+      # ValueRef, not Inline: the page lives in configmap.yaml so it can be
+      # edited without touching routing. The referenced ConfigMap must expose
+      # the page under the key `response.body`.
+      type: ValueRef
+      valueRef:
+        group: ""
+        kind: ConfigMap
+        name: agents-dashboard-html
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: agents-dashboard
+  namespace: hermes
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - agents.kalitsune.net
+  rules:
+    # No backendRefs anywhere in this route: Envoy answers every request itself.
+    # There is no Deployment, Service or container behind this hostname.
+    #
+    # The OIDC callback path (/oauth2/callback) and the logout path (/logout)
+    # are consumed by the OAuth2 filter *before* routing, so they never reach
+    # this rule even though it matches "/".
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      filters:
+        - type: ExtensionRef
+          extensionRef:
+            group: gateway.envoyproxy.io
+            kind: HTTPRouteFilter
+            name: agents-dashboard
+---
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: agents-dashboard
+  namespace: hermes
+spec:
+  # Targets the HTTPRoute, not the Gateway: a Gateway-level policy would put
+  # OIDC in front of every host on `apps`, including the ones that authenticate
+  # themselves (9router's direct API paths, Matrix, the agents' own
+  # oauth2-proxy sidecars).
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: agents-dashboard
+  oidc:
+    provider:
+      issuer: https://id.kalitsune.net
+    clientID: 9b13323e-d9bb-4506-b7ad-b9b05e173e2f
+    clientSecret:
+      name: agents-dashboard-oidc
+    # Must be registered as a callback URL on the Pocket ID client or the IdP
+    # rejects the authorize request. Envoy 1.39 always sends PKCE S256 on this
+    # flow — the client has pkceEnabled=true, which matches.
+    redirectURL: https://agents.kalitsune.net/oauth2/callback
+    logoutPath: /logout
+    # Cookie names are explicit so this flow cannot collide with the
+    # oauth2-proxy cookies the per-agent hosts set on their own subdomains.
+    cookieNames:
+      accessToken: agents_dashboard_token
+      idToken: agents_dashboard_id

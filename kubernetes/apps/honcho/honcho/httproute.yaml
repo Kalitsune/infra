@@ -10,7 +10,7 @@ spec:
   hostnames:
     # Internal-only. This surface exposes every peer representation and
     # conclusion Honcho holds, so it must never move to the apex domain.
-    - honcho.geod.es
+    - honcho.lab.kalitsune.net
   rules:
     # Rule 1 — send /workspaces straight to the only workspace.
     #

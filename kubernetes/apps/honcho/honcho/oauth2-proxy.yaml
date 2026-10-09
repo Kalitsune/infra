@@ -24,7 +24,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://honcho.geod.es/oauth2/callback
+            - --redirect-url=https://honcho.lab.kalitsune.net/oauth2/callback
             # Single upstream: the OpenConcho UI. Honcho's own HTTP surface is
             # deliberately NOT mapped here.
             #

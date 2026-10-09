@@ -37,7 +37,7 @@ spec:
             - --email-domain=*
             - --cookie-secure=true
             # Namespaced cookie. A shared name across apps on
-            # *.geod.es would let one app's session cookie be sent
+            # *.lab.kalitsune.net would let one app's session cookie be sent
             # to another, since cookies ignore port and path by default.
             - --cookie-name=_oauth2_proxy_9router
             - --session-store-type=cookie

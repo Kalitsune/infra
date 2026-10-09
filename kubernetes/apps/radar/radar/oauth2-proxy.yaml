@@ -20,7 +20,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://radar.geod.es/oauth2/callback
+            - --redirect-url=https://radar.lab.kalitsune.net/oauth2/callback
             - --upstream=http://radar:9280
             - --http-address=0.0.0.0:4180
             - --email-domain=*

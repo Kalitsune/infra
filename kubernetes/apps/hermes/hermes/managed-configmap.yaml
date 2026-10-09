@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: hermes-managed
+  namespace: hermes
+data:
+  # Mounted at /etc/hermes — Hermes' "managed scope". Every key here is
+  # merged over each profile's own config.yaml at load time, per leaf key,
+  # and the managed value wins. Crucially this applies to profiles that do
+  # not exist yet, which is why Honcho is enabled here rather than by editing
+  # every profiles/<name>/config.yaml.
+  #
+  # Keep this file minimal: anything added here becomes un-overridable by a
+  # profile. Only memory.provider is pinned; model, toolsets, reasoning
+  # effort and the rest stay under each profile's own control.
+  config.yaml: |
+    memory:
+      provider: honcho
