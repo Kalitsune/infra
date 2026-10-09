@@ -1,7 +1,7 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: agents
+  name: umami
   namespace: agents
 spec:
   interval: 30m
@@ -63,7 +63,7 @@ spec:
           - target:
               version: v1
               kind: StatefulSet
-              name: hermes-hermes-agent
+              name: umami
             patch: |
               - op: replace
                 path: /spec/volumeClaimTemplates/0/metadata/labels/helm.sh~1chart
@@ -72,6 +72,9 @@ spec:
                 path: /spec/volumeClaimTemplates/0/metadata/labels/app.kubernetes.io~1version
                 value: v2026.8.27
   values:
+    # Short, stable resource names. Namespace move already forces a fresh PVC,
+    # so renaming the objects costs nothing here.
+    fullnameOverride: umami
     config:
       # Routed through 9Router, not straight to Anthropic.
       #
@@ -124,7 +127,7 @@ spec:
         9router:
           name: 9router
           base_url: http://9router.9router.svc.cluster.local:20128/v1
-          key_env: HERMES_9ROUTER_KEY
+          key_env: UMAMI_9ROUTER_KEY
 
       # web_search goes to the in-cluster SearXNG (apps/searxng), reached by
       # Service DNS — not through search.kalitsune.net, so no public DNS, no
@@ -158,10 +161,15 @@ spec:
       # shape. The token for each peer is referenced as ${VAR} and supplied
       # from a SOPS Secret via envFrom — never inlined here.
       a2a_agents:
-        homelab-expert:
-          url: "http://homelab-expert.hermes.svc.cluster.local:9900"
+        hale:
+          url: "http://hale.agents.svc.cluster.local:9900"
           auth:
             type: bearer
+            # Key name, not identity: A2A_TOKEN_HOMELAB_EXPERT is a key inside
+            # the SOPS-encrypted hermes-a2a Secret, which only the operator can
+            # re-key. Rename the key there first, then here — changing this
+            # alone yields an unresolved ${env:...} that is itself a valid
+            # token string.
             token: "${env:A2A_TOKEN_HOMELAB_EXPERT}"
           timeout: 300
           capabilities:
@@ -240,20 +248,20 @@ spec:
         both get used.
 
         **umami — you. The operator's assistant, and the front door.**
-        Resources are still named `hermes` (StatefulSet `hermes-hermes-agent`,
+        Resources are named `umami` (StatefulSet `umami`, formerly `hermes-hermes-agent`,
         HelmRelease `hermes`, Matrix `@hermes:kalitsune.net`) because renaming a
         StatefulSet orphans its PVC. Dashboard `https://umami.agents.kalitsune.net`;
         `wren.agents.kalitsune.net` and `hermes.kalitsune.net` still resolve
         during the cutover. Chat label "Umami - Assistant".
 
         **hale — the station engineer. The only agent that touches the cluster.**
-        Resource name `homelab-expert` (StatefulSet `homelab-expert`, Matrix
+        Resource name `hale` (StatefulSet `hale`, Matrix
         `@hermes-homelab-expert:kalitsune.net`), dashboard
         `https://hale.agents.kalitsune.net`. Holds a cluster-admin kubeconfig
         and a push-capable deploy key for `github.com/kalitsune/infra`, and
         deploys only by committing to `main` and letting Flux converge.
         It runs an inbound A2A server at
-        `http://homelab-expert.hermes.svc.cluster.local:9900`, and you are the
+        `http://hale.agents.svc.cluster.local:9900`, and you are the
         one peer it trusts. Capabilities: `kubernetes`, `gitops`, `infra`,
         `homelab`.
 

@@ -35,7 +35,7 @@
 apiVersion: helm.toolkit.fluxcd.io/v2
 kind: HelmRelease
 metadata:
-  name: homelab-expert
+  name: hale
   namespace: agents
 spec:
   interval: 30m
@@ -69,7 +69,7 @@ spec:
           - target:
               version: v1
               kind: StatefulSet
-              name: homelab-expert
+              name: hale
             patch: |
               - op: replace
                 path: /spec/volumeClaimTemplates/0/metadata/labels/helm.sh~1chart
@@ -82,7 +82,7 @@ spec:
     # generate `homelab-expert-hermes-agent`; the StatefulSet's
     # volumeClaimTemplates name is baked into the PVC name, so changing this
     # later orphans the volume.
-    fullnameOverride: homelab-expert
+    fullnameOverride: hale
     # THE agent identity for this pod. This profile is the ROOT profile here
     # (HERMES_HOME=/opt/data), not a sub-profile, so there is no
     # profiles/<name>/ directory and no multiplexing. That is the point: one
@@ -107,7 +107,7 @@ spec:
         9router:
           name: 9router
           base_url: http://9router.9router.svc.cluster.local:20128/v1
-          key_env: HOMELAB_EXPERT_9ROUTER_KEY
+          key_env: HALE_9ROUTER_KEY
       # web_search goes to the in-cluster SearXNG (apps/searxng) over Service
       # DNS — no public DNS, no TLS, and not subject to the 60/min edge rate
       # limit on search.kalitsune.net. SEARXNG_URL is in extraEnv.
@@ -212,11 +212,11 @@ spec:
 
         # Editing this prompt
 
-        This text is `spec.values.soul.text` in `kubernetes/apps/agents/homelab-expert/helmrelease.yaml`. Editing it rewrites the `homelab-expert-config` ConfigMap, whose checksum annotation rolls the StatefulSet — which terminates the session you are running in. Warn the operator before pushing such a change.
+        This text is `spec.values.soul.text` in `kubernetes/apps/agents/hale/helmrelease.yaml`. Editing it rewrites the `hale-config` ConfigMap, whose checksum annotation rolls the StatefulSet — which terminates the session you are running in. Warn the operator before pushing such a change.
 
         # Naming
 
-        The agent identity here is `hale`; `homelab-expert` is the surviving Kubernetes resource name (HelmRelease, StatefulSet, Service, PVC, directory). They differ on purpose: a StatefulSet's volumeClaimTemplates name is baked into its PVC name, so renaming those objects would orphan the volume. Dashboard is `hale.agents.kalitsune.net`; `homelab-expert.hermes.kalitsune.net` still resolves during the cutover. The Matrix account is still `@hermes-homelab-expert`.
+        The agent identity and the Kubernetes resource name are both `hale` now: the move to the `agents` namespace created a fresh PVC regardless, so the old `homelab-expert` naming had nothing left to protect. Dashboard is `hale.agents.kalitsune.net`; `homelab-expert.hermes.kalitsune.net` stays attached as a legacy alias during the cutover. The Matrix account is still `@hermes-homelab-expert` (renaming it needs a new account).
 
         Peers: `wren` (the dispatcher, outbound A2A — still resource-named `hermes`) and `finnegan` (writes new agents' SOUL.md and delegates their implementation to you).
 
@@ -300,7 +300,7 @@ spec:
         value: >-
           Kubernetes and GitOps specialist for the kalitsune homelab. Deploys, diagnoses and repairs cluster workloads by committing to the infra repo and letting Flux converge.
       - name: A2A_PUBLIC_URL
-        value: "http://homelab-expert.hermes.svc.cluster.local:9900"
+        value: "http://hale.agents.svc.cluster.local:9900"
       # Only this identity may run tasks. The name matches the left-hand side
       # of A2A_PEER_TOKENS, i.e. an authenticated peer-token name.
       - name: A2A_TRUSTED_PEERS
@@ -313,7 +313,7 @@ spec:
       - name: A2A_PEER_TOKENS_HERMES
         valueFrom:
           secretKeyRef:
-            name: homelab-expert-a2a
+            name: hale-a2a
             key: A2A_PEER_TOKENS
       - name: A2A_PEER_TOKEN_FINNEGAN
         valueFrom:
@@ -374,13 +374,13 @@ spec:
       - secretRef:
           name: hermes-secrets
       - secretRef:
-          name: homelab-expert-matrix-secrets
+          name: hale-matrix-secrets
       # Inbound A2A credential. A2A_PEER_TOKENS maps a presented token to an
       # authenticated identity ("hermes"), and that authenticated name — never
       # anything the request body claims — is what rate limiting, the trust
       # gate and the audit log key on.
       - secretRef:
-          name: homelab-expert-a2a
+          name: hale-a2a
           # MATRIX_RECOVERY_KEY now lives in the Secret above rather than in its
           # own file. The agent originally had to split it out because it cannot
           # decrypt SOPS (adding a key to an encrypted file needs the private
@@ -563,7 +563,7 @@ spec:
         # A2A inbound. Deliberately NOT routed through the HTTPRoute or
         # oauth2-proxy: this is a cluster-internal, token-authenticated
         # machine interface, not a browser surface. Reachable only as
-        # homelab-expert.hermes.svc.cluster.local:9900.
+        # hale.agents.svc.cluster.local:9900.
         - name: a2a
           port: 9900
           targetPort: 9900

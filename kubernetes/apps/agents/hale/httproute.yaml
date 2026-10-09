@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: homelab-expert
+  name: hale
   namespace: agents
 spec:
   parentRefs:
@@ -23,7 +23,7 @@ spec:
               type: Exact
               value: self-hosted
       backendRefs:
-        - name: homelab-expert
+        - name: hale
           port: 4180
 
     # Rule 2 – redirect /auth/login to inject provider=self-hosted
@@ -43,5 +43,5 @@ spec:
 
     # Rule 3 – all other traffic
     - backendRefs:
-        - name: homelab-expert
+        - name: hale
           port: 4180

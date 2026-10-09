@@ -151,7 +151,7 @@ spec:
       # Secret via envFrom — never inlined.
       a2a_agents:
         hale:
-          url: "http://homelab-expert.hermes.svc.cluster.local:9900"
+          url: "http://hale.agents.svc.cluster.local:9900"
           auth:
             type: bearer
             token: "${env:A2A_TOKEN_HALE}"

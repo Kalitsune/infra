@@ -15,7 +15,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: 9router-key-writer
-  namespace: hermes
+  namespace: agents
 rules:
   # Deliberately narrow: this can create and update exactly one Secret and
   # cannot read any other. `get` is required because `apply` reads before
@@ -38,7 +38,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: 9router-key-writer
-  namespace: hermes
+  namespace: agents
 subjects:
   - kind: ServiceAccount
     name: 9router-provisioner

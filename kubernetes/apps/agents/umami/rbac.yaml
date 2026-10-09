@@ -17,5 +17,5 @@ roleRef:
   name: hermes-helm-reader
 subjects:
   - kind: ServiceAccount
-    name: agents
+    name: umami
     namespace: agents

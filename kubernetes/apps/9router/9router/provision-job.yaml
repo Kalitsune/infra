@@ -45,11 +45,12 @@ metadata:
   #   gen 10: mint a key for n8n (Secret n8n/9router-n8n-overwrite),
   #           wrapped as CREDENTIALS_OVERWRITE_DATA
   #   gen 11: republish 9router-agent-keys into `hermes` (gen 10 wrote it to
+  #   gen 12: agents namespace + renamed keys (UMAMI_/HALE_9ROUTER_KEY)
   #           the abandoned `agents` namespace, so agents got no key -> 401)
-  name: 9router-provision-keys-11
+  name: 9router-provision-keys-12
   namespace: 9router
   annotations:
-    kalitsune.net/provision-generation: "11"
+    kalitsune.net/provision-generation: "12"
 spec:
   # Keep the finished pod around so its log (which key was created vs reused)
   # is inspectable for a day.
@@ -87,7 +88,7 @@ spec:
             #   kubectl -n hermes get secret 9router-agent-keys \
             #     -o jsonpath='{.data.LAPTOP_9ROUTER_KEY}' | base64 -d
             - name: NINEROUTER_AGENTS
-              value: "hermes,homelabexpert,finnegan,laptop,honcho,n8n"
+              value: "umami,hale,finnegan,laptop,honcho,n8n"
             # OIDC dashboard login, using the SAME Pocket ID client that
             # oauth2-proxy already uses — same Secret, no second client to
             # rotate. Pocket ID allows multiple redirect URIs per client, so

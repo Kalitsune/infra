@@ -1,7 +1,7 @@
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: agents
+  name: umami
   namespace: agents
 spec:
   parentRefs:
@@ -42,7 +42,7 @@ spec:
               type: Exact
               value: self-hosted
       backendRefs:
-        - name: hermes-hermes-agent
+        - name: umami
           port: 4180
 
     # Rule 2 – fallback redirect to inject provider=self-hosted
@@ -61,5 +61,5 @@ spec:
 
     # Rule 3 – all other traffic
     - backendRefs:
-        - name: hermes-hermes-agent
+        - name: umami
           port: 4180

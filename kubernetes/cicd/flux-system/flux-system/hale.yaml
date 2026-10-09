@@ -1,11 +1,11 @@
 apiVersion: kustomize.toolkit.fluxcd.io/v1
 kind: Kustomization
 metadata:
-  name: homelab-expert
+  name: hale
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/hermes/homelab-expert
+  path: ./kubernetes/apps/agents/hale
   prune: true
   sourceRef:
     kind: GitRepository
@@ -15,7 +15,7 @@ spec:
   # container mounts that release's PVC. Ordering here avoids a first-run
   # failure on a missing namespace or an unbound claim.
   dependsOn:
-    - name: hermes
+    - name: umami
   decryption:
     provider: sops
     secretRef:
