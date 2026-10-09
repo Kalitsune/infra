@@ -628,8 +628,10 @@ spec:
     #   consumed by config.providers.9router.key_env.
     # generation 16: model provider switched to 9router; removed the dangling
     #   hermes-matrix-recovery envFrom (Secret consolidated into matrix-secret).
+    # generation 17: 9router-agent-keys republished into this namespace after the
+    #   agents-namespace revert; envFrom is read once at start, so roll the pod.
     podAnnotations:
-      kalitsune.net/env-generation: "16"
+      kalitsune.net/env-generation: "17"
 
     # Sized from observation, not from the chart defaults (256Mi / 2Gi).
     #
