@@ -126,6 +126,25 @@ spec:
           base_url: http://9router.9router.svc.cluster.local:20128/v1
           key_env: HERMES_9ROUTER_KEY
 
+      # web_search goes to the in-cluster SearXNG (apps/searxng), reached by
+      # Service DNS — not through search.kalitsune.net, so no public DNS, no
+      # TLS and no gateway rate limit in the path. SEARXNG_URL is in extraEnv.
+      #
+      # `extract_backend` is NOT optional here, and this is the whole trap:
+      # SearXNG is search-only (plugins/web/searxng/provider.py has no
+      # extract), but web_tools resolves extract as
+      # `web.extract_backend > web.backend > autodetect` — and setting
+      # search_backend alone makes `selection_exists("web")` true, which short-
+      # circuits autodetect to firecrawl AND kills the keyless ladder these
+      # agents currently ride. Measured in the running image:
+      #   search_backend: searxng, no extract_backend -> extract = searxng
+      # i.e. every web_extract call would hit a provider that cannot extract.
+      # Naming firecrawl explicitly restores it; it works keyless here
+      # (is_keyless_available() -> True, verified by extracting example.com).
+      web:
+        search_backend: searxng
+        extract_backend: firecrawl
+
       # --- A2A dispatcher ---
       #
       # This agent is the front door: it talks to the operator, then delegates
@@ -447,6 +466,16 @@ spec:
         readOnly: true
 
     extraEnv:
+      # SearXNG instance for web_search, selected by `config.web` above.
+      # Service DNS, not search.kalitsune.net: staying inside the cluster
+      # skips public DNS, TLS and the 60/min edge rate limit that exists to
+      # stop strangers using the public host as a scraping proxy.
+      #
+      # The provider reads this through Hermes' config/.env layer
+      # (`provider_env("SEARXNG_URL")`), so the process env is a valid home
+      # for it. Verified against the live instance from inside this namespace.
+      - name: SEARXNG_URL
+        value: "http://searxng.searxng.svc.cluster.local:8080"
       - name: API_SERVER_ENABLED
         value: "true"
       - name: API_SERVER_HOST

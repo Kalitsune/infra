@@ -126,6 +126,19 @@ spec:
       agent:
         reasoning_effort: high
 
+      # web_search goes to the in-cluster SearXNG (apps/searxng) over Service
+      # DNS — no public DNS, no TLS, and not subject to the 60/min edge rate
+      # limit on search.kalitsune.net. SEARXNG_URL is in extraEnv.
+      #
+      # `extract_backend` is mandatory alongside it: SearXNG is search-only,
+      # but naming `search_backend` alone makes `selection_exists("web")` true,
+      # which both short-circuits autodetect and drops the keyless ladder — the
+      # measured result is `extract = searxng`, a provider with no extract at
+      # all. See the sibling hermes release for the full reasoning.
+      web:
+        search_backend: searxng
+        extract_backend: firecrawl
+
       # --- A2A: outbound only ---
       #
       # One peer: hale, the agent that owns the cluster credentials. Declaring
@@ -339,6 +352,11 @@ spec:
       OPENAI_API_KEY: ""
 
     extraEnv:
+      # SearXNG instance for web_search, selected by `config.web` above.
+      # Service DNS keeps the call inside the cluster — see the sibling
+      # hermes release for why that is preferred over the public hostname.
+      - name: SEARXNG_URL
+        value: "http://searxng.searxng.svc.cluster.local:8080"
       - name: API_SERVER_ENABLED
         value: "true"
       - name: API_SERVER_HOST
