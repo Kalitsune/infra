@@ -1,0 +1,27 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: searxng
+  namespace: flux-system
+spec:
+  dependsOn:
+    # envoy-gateway owns the `apps` Gateway that the HTTPRoute and the
+    # BackendTrafficPolicy attach to. No storage dependency: this app has no
+    # PVC.
+    - name: envoy-gateway
+  interval: 30m
+  path: ./kubernetes/apps/searxng/searxng
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # secret.yaml is SOPS-encrypted. Without this block Flux applies the
+  # ciphertext verbatim and SEARXNG_SECRET becomes the literal string
+  # "ENC[AES256_GCM,...]" — which "works" (it is a valid key) and is exactly
+  # the kind of silent wrong that only shows up as broken image-proxy HMACs.
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m

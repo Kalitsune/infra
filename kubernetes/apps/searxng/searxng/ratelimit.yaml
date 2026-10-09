@@ -1,0 +1,43 @@
+# Per-IP request cap at the edge, standing in for SearXNG's own limiter.
+#
+# SearXNG's `server.limiter` is the upstream answer to abuse, but
+# `searx/limiter.py` refuses to arm without a Valkey connection, so enabling
+# it means running a second Deployment for a single-user instance. Envoy
+# already sees every request, so the cheaper equivalent is here.
+#
+# `Local`, not `Global`: a local limit is enforced per Envoy pod with no
+# external rate-limit service to deploy. The `apps` Gateway runs a single
+# replica, so per-pod and per-instance are currently the same thing — if that
+# Gateway is ever scaled out, the effective ceiling multiplies by the replica
+# count. That is acceptable slack for an anti-abuse limit, not for a quota.
+apiVersion: gateway.envoyproxy.io/v1alpha1
+kind: BackendTrafficPolicy
+metadata:
+  name: searxng
+  namespace: searxng
+spec:
+  # The HTTPRoute, not the Gateway: a Gateway-level policy would rate-limit
+  # every host on `apps`, including Matrix federation and the agents' APIs.
+  targetRefs:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      name: searxng
+  rateLimit:
+    local:
+      rules:
+        # `Distinct` on a /0 CIDR means "bucket per client IP", not "one
+        # shared bucket for all of 0.0.0.0/0" — that distinction is the whole
+        # policy. Envoy reads the client IP from X-Forwarded-For, which this
+        # Gateway populates (verified in its access log).
+        #
+        # 60/min is roughly 10x a human searching continuously and well under
+        # what a scraper wants. A browser page view is one request: SearXNG
+        # renders server-side and its CSS/JS are separate requests, so the
+        # budget is not consumed by assets at one request each.
+        - clientSelectors:
+            - sourceCIDR:
+                type: Distinct
+                value: 0.0.0.0/0
+          limit:
+            requests: 60
+            unit: Minute

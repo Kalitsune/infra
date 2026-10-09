@@ -1,0 +1,45 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: searxng
+  namespace: searxng
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    # The apex, not `lab.`, because the operator asked for this exact host and
+    # the people who need it are off the home wifi — the same audience the
+    # media stack is public for. AGENT.md requires that reasoning to live
+    # here rather than only in the commit message.
+    #
+    # AGENT.md also says anything with no authentication of its own belongs
+    # on `lab.`, and SearXNG has none. What narrows the surface instead:
+    #
+    #   - A per-IP rate limit at the edge (ratelimit.yaml). An open
+    #     metasearch instance is attractive as a free scraping proxy, and the
+    #     cost of that abuse lands on this house's IP as captchas from the
+    #     upstream engines, not on SearXNG.
+    #   - SearXNG's own `limiter` is off because it needs a Valkey server;
+    #     the edge limit replaces it. See deployment.yaml.
+    #   - Nothing is stored per user: preferences live in a client-side
+    #     cookie, there is no account and no database, so there is no state
+    #     for an anonymous visitor to reach.
+    #   - The agents do NOT come through here. They call
+    #     http://searxng.searxng.svc.cluster.local:8080 directly, so an OIDC
+    #     SecurityPolicy on this route would gate humans without touching
+    #     them.
+    #
+    # TODO(operator): that SecurityPolicy is the intended end state and is a
+    # follow-up commit, not an oversight. It needs a Pocket ID client with
+    # `pkceEnabled: true` and callback
+    # `https://search.kalitsune.net/oauth2/callback`, which only the Pocket ID
+    # UI can create: POCKET_ID_API_KEY answers
+    # `401 {"code":"not_signed_in"}` on /api/oidc/clients. Hand over the
+    # client ID + secret and the policy is ~15 lines, copied from
+    # apps/hermes/dashboard/httproute.yaml.
+    - search.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: searxng
+          port: 8080

@@ -1,0 +1,30 @@
+# SearXNG user settings, merged ON TOP of the shipped defaults.
+#
+# `use_default_settings: true` is what makes this file a patch rather than a
+# replacement: without it SearXNG expects every key (including the whole
+# `engines:` list) to be present here and starts with no engines at all.
+#
+# Everything the container image can take from an environment variable is set
+# in the Deployment instead, because `searx/settings_defaults.py` gives those
+# keys an `environ_name` and the env wins over this file:
+#   server.secret_key   <- SEARXNG_SECRET   (SOPS secret, never in this file)
+#   server.base_url     <- SEARXNG_BASE_URL
+#   server.limiter      <- SEARXNG_LIMITER
+# Only `search.formats` has no env override, which is the reason this
+# ConfigMap exists at all.
+use_default_settings: true
+
+general:
+  instance_name: "Kalitsune Search"
+  # No donation/contact links on a private instance.
+  donation_url: false
+  contact_url: false
+
+search:
+  # THE load-bearing line. The default is `formats: [html]` and
+  # `searx/webapp.py` answers `flask.abort(403)` for any other output format —
+  # so without `json` here every Hermes agent's web_search gets a bare 403.
+  # Verified against searx/webapp.py:626-631 at tag 2026.10.7.
+  formats:
+    - html
+    - json

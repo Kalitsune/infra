@@ -1,0 +1,23 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+# No global `namespace:` here. Every manifest below declares its own, and the
+# transformer would also rewrite metadata.namespace INSIDE the SOPS-encrypted
+# Secret — replacing ciphertext with the plaintext string "searxng", which
+# invalidates the MAC and makes kustomize-controller fail decryption.
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - service.yaml
+  - deployment.yaml
+  - httproute.yaml
+  - ratelimit.yaml
+
+configMapGenerator:
+  # Generated rather than hand-written so the name carries a content hash:
+  # editing settings.yml then rolls the Deployment by itself. A plain
+  # ConfigMap would update in place and the running process would keep the
+  # old settings while Flux reported Ready.
+  - name: searxng-settings
+    namespace: searxng
+    files:
+      - settings.yml

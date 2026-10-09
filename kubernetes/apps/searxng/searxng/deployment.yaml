@@ -1,0 +1,115 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: searxng
+  namespace: searxng
+spec:
+  replicas: 1
+  # No persistent volume anywhere in this app, so a RollingUpdate is safe:
+  # /etc/searxng is a read-only ConfigMap and /var/cache/searxng is an
+  # emptyDir. There is no database and nothing to corrupt with two writers.
+  selector:
+    matchLabels:
+      app: searxng
+  template:
+    metadata:
+      labels:
+        app: searxng
+    spec:
+      securityContext:
+        # uid/gid 977 is the `searxng` account baked into the image
+        # (`grep searxng /etc/passwd` -> searxng:x:977:977). The image's
+        # USER is root, so this has to be stated explicitly; the entrypoint
+        # only needs root for `chown`/`update-ca-certificates`, both of which
+        # it skips when not root. Verified: it then prints one WARNING per
+        # volume ("not owned by searxng:searxng") and serves normally.
+        runAsNonRoot: true
+        runAsUser: 977
+        runAsGroup: 977
+        fsGroup: 977
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: searxng
+          # Tag documents intent, digest enforces it. Bump BOTH together.
+          # Digest is the multi-arch index (linux/amd64 + arm64 + arm).
+          # SearXNG publishes no semver: tags are date-plus-commit, and
+          # `latest` is the same digest as the newest dated tag.
+          image: docker.io/searxng/searxng:2026.10.7-6671d89be@sha256:cc026dbee25b864d7f9731957cd5ef36ba2e2d61abd2996d57f1b863483e7409
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+          env:
+            # Public URL, so generated links and the OpenSearch description
+            # point at the gateway hostname rather than the pod. Overrides
+            # `server.base_url` from settings.yml (settings_defaults.py gives
+            # it environ_name SEARXNG_BASE_URL).
+            - name: SEARXNG_BASE_URL
+              value: https://search.kalitsune.net/
+            # Flask session + image-proxy HMAC key. Without it SearXNG runs
+            # with the literal "ultrasecretkey" from the shipped settings and
+            # logs `server.secret_key is not changed` (webapp.py:1357).
+            - name: SEARXNG_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: searxng
+                  key: SEARXNG_SECRET
+            # SearXNG's own bot limiter is deliberately OFF: it requires a
+            # Valkey server (searx/limiter.py refuses to arm without one), so
+            # turning it on means a second Deployment. Abuse of the public
+            # hostname is handled at the edge instead — see
+            # ratelimit.yaml.
+            - name: SEARXNG_LIMITER
+              value: "false"
+          ports:
+            - name: http
+              containerPort: 8080
+          # /healthz returns a bare 200 "OK" with no auth and no search
+          # engine involvement (webapp.py:597). Nothing else in this app is
+          # cheap enough to probe: every other path runs a real query.
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              # Memory only. A CPU limit would throttle the burst of parallel
+              # upstream engine requests that one search fans out into, which
+              # shows up as slow searches rather than as a resource error.
+              memory: 512Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/searxng
+              readOnly: true
+            - name: cache
+              mountPath: /var/cache/searxng
+      volumes:
+        # settings.yml comes from the generated ConfigMap, whose name carries
+        # a content hash — so editing settings.yml rolls this Deployment on
+        # its own and needs no annotation bump.
+        #
+        # The mount is read-only on purpose. The entrypoint would otherwise
+        # copy its own template over our settings on first boot; it skips
+        # that when the file already exists (`check_file` passes), and a
+        # read-only mount makes the skip load-bearing rather than incidental.
+        - name: config
+          configMap:
+            name: searxng-settings
+        # SearXNG's __SEARXNG_DATA_PATH. It holds no state worth keeping —
+        # the entrypoint only requires the directory to exist, and this
+        # instance has no database. emptyDir, so no storage class decision
+        # and nothing to back up.
+        - name: cache
+          emptyDir: {}
