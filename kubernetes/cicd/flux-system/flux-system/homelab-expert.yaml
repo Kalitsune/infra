@@ -15,7 +15,7 @@ spec:
   # container mounts that release's PVC. Ordering here avoids a first-run
   # failure on a missing namespace or an unbound claim.
   dependsOn:
-    - name: agents
+    - name: hermes
   decryption:
     provider: sops
     secretRef:

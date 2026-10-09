@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/agents/dashboard
+  path: ./kubernetes/apps/hermes/dashboard
   prune: true
   sourceRef:
     kind: GitRepository
@@ -13,7 +13,7 @@ spec:
   # The `hermes` namespace this Kustomization writes into is owned by the
   # `hermes` Kustomization.
   dependsOn:
-    - name: agents
+    - name: hermes
   decryption:
     provider: sops
     secretRef:
