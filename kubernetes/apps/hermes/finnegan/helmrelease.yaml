@@ -483,5 +483,7 @@ spec:
     #               (provision gen 9); the pod started before it was minted and
     #               holds an env without it, so every model call 401s until
     #               this rolls.
+    # generation 3: 9router-agent-keys republished into this namespace after the
+    #   agents-namespace revert; envFrom is read once at start, so roll the pod.
     podAnnotations:
-      kalitsune.net/env-generation: "2"
+      kalitsune.net/env-generation: "3"
