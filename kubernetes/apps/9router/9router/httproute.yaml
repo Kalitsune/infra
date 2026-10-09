@@ -12,10 +12,10 @@ spec:
     # provider credentials — exactly what AGENT.md says belongs on the
     # internal suffix. Nothing here needs to be reachable by a third party.
     #
-    # The hostname alone enforces nothing: *.lab.kalitsune.net resolves
+    # The hostname alone enforces nothing: *.geod.es resolves
     # publicly and binds to the same public Gateway listener as every other
     # host. What gates each path is described per-rule below.
-    - 9router.lab.kalitsune.net
+    - 9router.geod.es
 
   # Gateway API sorts rules by specificity, not document order: a PathPrefix
   # match beats the catch-all `/` regardless of where it appears. The order

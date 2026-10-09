@@ -24,7 +24,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - download-stack.lab.kalitsune.net
+    - download-stack.geod.es
   rules:
     - matches:
         - path:
@@ -103,7 +103,7 @@ spec:
     clientID: b076b66b-a080-4e7f-8154-80b9028337d8
     clientSecret:
       name: download-stack-dashboard-oidc
-    redirectURL: https://download-stack.lab.kalitsune.net/oauth2/callback
+    redirectURL: https://download-stack.geod.es/oauth2/callback
     logoutPath: /logout
     cookieNames:
       accessToken: download_stack_token

@@ -98,7 +98,7 @@ spec:
       # httproute.yaml), so it was empty and OAuth callback URLs fell back to
       # request.base_url. Must match httproute.yaml's hostname.
       - name: WEBUI_URL
-        value: "https://open-webui.lab.kalitsune.net"
+        value: "https://open-webui.geod.es"
       # Open WebUI marks most settings PersistentConfig: on FIRST boot they
       # are copied from env into the SQLite `config` table, and from then on
       # the DB wins and the env var is ignored forever. That silently pinned

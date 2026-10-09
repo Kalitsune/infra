@@ -8,7 +8,7 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   hostnames:
-    - open-webui.lab.kalitsune.net
+    - open-webui.geod.es
   rules:
     - backendRefs:
         - name: open-webui

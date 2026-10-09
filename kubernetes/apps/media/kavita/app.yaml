@@ -154,7 +154,7 @@ spec:
 #
 # The apex has no wildcard CNAME -- *.kalitsune.net does not exist in the zone,
 # only *.lab / *.hermes / *.agents -- so read.kalitsune.net is its own CNAME
-# to lab.kalitsune.net. TLS is already covered by the *.kalitsune.net SAN on
+# to geod.es. TLS is already covered by the *.kalitsune.net SAN on
 # the apps-tls certificate.
 #
 # Hostname is read.kalitsune.net, renamed from kavita.kalitsune.net at the

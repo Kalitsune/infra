@@ -1,6 +1,6 @@
 # Syncthing
 
-File synchronisation, at `https://sync.lab.kalitsune.net`.
+File synchronisation, at `https://sync.geod.es`.
 
 ## Authentication
 
@@ -77,7 +77,7 @@ Neither was done here because neither was asked for. Pick deliberately.
 - Runs as uid 1000. The image defaults to root and Syncthing logs
   `Syncthing should not run as a privileged or system user` when it does.
 - `STGUIADDRESS=0.0.0.0:8384` also disables the GUI's Host-header check, so
-  requests arriving as `sync.lab.kalitsune.net` are served instead of the
+  requests arriving as `sync.geod.es` are served instead of the
   "Host check error" page. No `insecureSkipHostcheck` is set.
 - NFS ignores `fsGroup`. If Syncthing cannot write to `/var/syncthing/data`,
   that is an export ownership question on TrueNAS, not a manifest bug.

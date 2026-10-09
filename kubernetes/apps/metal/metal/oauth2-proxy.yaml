@@ -30,7 +30,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://proxmox.lab.kalitsune.net/oauth2/callback
+            - --redirect-url=https://proxmox.geod.es/oauth2/callback
             - --upstream=https://192.168.1.161:8006
             - --ssl-upstream-insecure-skip-verify=true
             - --http-address=0.0.0.0:4180
@@ -107,7 +107,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://truenas.lab.kalitsune.net/oauth2/callback
+            - --redirect-url=https://truenas.geod.es/oauth2/callback
             - --upstream=https://192.168.1.162
             - --ssl-upstream-insecure-skip-verify=true
             - --http-address=0.0.0.0:4180

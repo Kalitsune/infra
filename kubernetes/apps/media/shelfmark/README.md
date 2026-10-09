@@ -5,7 +5,7 @@ Finds a book on Anna's Archive, downloads the file, writes it into the `Books`
 subtree of `media-storage` — the same directory Kavita scans at
 `read.kalitsune.net`, so a finished download is a library item with no copy step.
 
-- URL: `https://download-stack.lab.kalitsune.net/shelfmark/`
+- URL: `https://download-stack.geod.es/shelfmark/`
 - Image: `ghcr.io/calibrain/shelfmark` (the full image, not `-lite`)
 
 ## Why the full image

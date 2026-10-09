@@ -180,7 +180,7 @@ spec:
                     level: admin
             generic:
               enabled: true
-              urlPrefix: https://webhooks.lab.kalitsune.net/webhook/
+              urlPrefix: https://webhooks.geod.es/webhook/
               userIdPrefix: _webhook_
               allowJsTransformationFunctions: false
               waitForComplete: false

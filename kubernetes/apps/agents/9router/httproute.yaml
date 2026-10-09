@@ -12,7 +12,7 @@ spec:
     # provider credentials — exactly what AGENT.md says belongs on the
     # internal suffix. Nothing here needs to be reachable by a third party.
     #
-    # The hostname alone enforces nothing: *.lab.kalitsune.net resolves
+    # The hostname alone enforces nothing: *.geod.es resolves
     # publicly and binds to the same public Gateway listener as every other
     # host. What gates each path is described per-rule below.
     - router.agents.kalitsune.net

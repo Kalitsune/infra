@@ -125,7 +125,7 @@ spec:
               value: /var/syncthing/config
             # Binding the GUI to the wildcard address also disables Syncthing's
             # Host-header check for that listener -- verified against 2.1.5:
-            # a request with `Host: sync.lab.kalitsune.net` returns 200, not the
+            # a request with `Host: sync.geod.es` returns 200, not the
             # "Host check error" page. So no insecureSkipHostcheck is needed.
             - name: STGUIADDRESS
               value: 0.0.0.0:8384
@@ -195,9 +195,9 @@ spec:
     - name: apps
       namespace: envoy-gateway-system
   # lab., not the apex: this is an admin surface with no login of its own.
-  # Covered by the existing *.lab.kalitsune.net CNAME, so no DNS change.
+  # Covered by the existing *.geod.es CNAME, so no DNS change.
   hostnames:
-    - sync.lab.kalitsune.net
+    - sync.geod.es
   rules:
     - backendRefs:
         - name: syncthing
@@ -227,7 +227,7 @@ spec:
     clientID: b65247ed-5b97-4d56-bf37-4d4f703dd1e8
     clientSecret:
       name: syncthing-oidc
-    redirectURL: https://sync.lab.kalitsune.net/oauth2/callback
+    redirectURL: https://sync.geod.es/oauth2/callback
     logoutPath: /logout
     # Distinct cookie names so this flow cannot collide with the oauth2-proxy
     # cookies other *.lab hosts set.

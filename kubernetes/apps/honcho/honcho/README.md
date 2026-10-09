@@ -75,7 +75,7 @@ Consequences worth knowing:
   open, assuming a localhost-only bind), which is an SSRF relay onto the cluster
   network.
 
-### Paths on `honcho.lab.kalitsune.net`
+### Paths on `honcho.geod.es`
 
 oauth2-proxy has a single upstream — the UI. Honcho's own HTTP surface
 (`/docs`, `/v3/…`) is deliberately **not** mapped onto this hostname.
@@ -181,7 +181,7 @@ Both are SOPS-encrypted and currently hold placeholders:
   working LLM provider.
 - `oauth2-secret.yaml` → `clientId` / `clientSecret`: register a new OIDC
   client in Pocket ID with callback
-  `https://honcho.lab.kalitsune.net/oauth2/callback`. Clients are per-host, so
+  `https://honcho.geod.es/oauth2/callback`. Clients are per-host, so
   another app's client will not work.
 
 Edit with `sops kubernetes/apps/honcho/honcho/<file>.yaml`.
@@ -207,7 +207,7 @@ dimension other than 3072.
 
 ## Rotating the Hermes credential
 
-`HONCHO_API_KEY` (in `apps/hermes/hermes/honcho-client-secret.yaml`) is an
+`HONCHO_API_KEY` (in `apps/agents/hermes/honcho-client-secret.yaml`) is an
 admin JWT signed with `AUTH_JWT_SECRET`. The two are a pair — rotating the
 secret invalidates the token, so both must be regenerated in the same commit.
 The token is `{"t": "", "ad": true}` signed HS256; `scripts/generate_jwt.py`

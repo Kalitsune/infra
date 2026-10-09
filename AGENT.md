@@ -12,7 +12,7 @@ Linux VM hosting a Kubernetes cluster, and everything running on that cluster.
 The cluster is reconciled by Flux from `github.com/kalitsune/infra`; Cilium is
 the CNI and Envoy Gateway is the ingress/Gateway API implementation. TLS is
 Let's Encrypt with wildcard certificates for `*.kalitsune.net` and
-`*.lab.kalitsune.net`. Authentication is Pocket ID OIDC at
+`*.geod.es`. Authentication is Pocket ID OIDC at
 `https://id.kalitsune.net`.
 
 This repo is declarative. Nothing here is a script that you run to "make it so" —
@@ -185,7 +185,7 @@ Checklist:
       `httproute.yaml`, listed in that app's `kustomization.yaml` — not an
       Ingress, and not under `network/`. This cluster uses Gateway API via
       Envoy Gateway
-- [ ] hostname follows the convention below — `lab.kalitsune.net` unless public
+- [ ] hostname follows the convention below — `geod.es` unless public
       exposure was explicitly asked for
 
 ### Network changes
@@ -219,7 +219,7 @@ Two suffixes, and the choice is a security decision, not a naming one:
 
 | Suffix                    | For                            | Example                       |
 | ------------------------- | ------------------------------ | ----------------------------- |
-| `<app>.lab.kalitsune.net` | administrative / internal-only | `portainer.lab.kalitsune.net` |
+| `<app>.geod.es` | administrative / internal-only | `portainer.geod.es` |
 | `<app>.kalitsune.net`     | deliberately public-facing     | `jellyfin.kalitsune.net`      |
 
 Rules:
@@ -257,20 +257,20 @@ The public IP is dynamic — the home connection periodically fails over to a
 so that **exactly one record ever holds an IP**:
 
 ```
-lab.kalitsune.net        A      82.64.31.214   TTL 60   <- the only A record
-matrix.kalitsune.net     CNAME  lab.kalitsune.net
-id.kalitsune.net         CNAME  lab.kalitsune.net
-hermes.kalitsune.net     CNAME  lab.kalitsune.net
-turn.kalitsune.net       CNAME  lab.kalitsune.net
-*.lab.kalitsune.net      CNAME  lab.kalitsune.net
-*.hermes.kalitsune.net   CNAME  lab.kalitsune.net
+geod.es        A      82.64.31.214   TTL 60   <- the only A record
+matrix.kalitsune.net     CNAME  geod.es
+id.kalitsune.net         CNAME  geod.es
+hermes.kalitsune.net     CNAME  geod.es
+turn.kalitsune.net       CNAME  geod.es
+*.geod.es      CNAME  geod.es
+*.hermes.kalitsune.net   CNAME  geod.es
 ```
 
-A dynamic-DNS updater keeps `lab.kalitsune.net` current. Every other name
+A dynamic-DNS updater keeps `geod.es` current. Every other name
 inherits the change for free, so a WAN flip is one update instead of a dozen,
 and there is no window where some hostnames point at the old address.
 
-**So: a new externally-reachable hostname is a CNAME to `lab.kalitsune.net`,
+**So: a new externally-reachable hostname is a CNAME to `geod.es`,
 never a second A record.** An A record duplicates the source of truth and
 will silently rot the next time the WAN changes — it keeps resolving, just to
 an address nobody is listening on any more. Records that legitimately point
@@ -287,7 +287,7 @@ Two things this does not cover:
   `external-ip` is the live example: DNS moves, that value does not, and the
   symptom is calls connecting and then failing with no audio. When you must
   hardcode an address, say so at the point of use and name
-  `dig +short lab.kalitsune.net` as the thing to compare against.
+  `dig +short geod.es` as the thing to compare against.
 
 DNS lives in Cloudflare, not in this repo, so a hostname change is not a
 GitOps change — nothing here reconciles it, and it takes effect immediately.

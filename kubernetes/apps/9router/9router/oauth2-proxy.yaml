@@ -28,7 +28,7 @@ spec:
           args:
             - --provider=oidc
             - --oidc-issuer-url=https://id.kalitsune.net
-            - --redirect-url=https://9router.lab.kalitsune.net/oauth2/callback
+            - --redirect-url=https://9router.geod.es/oauth2/callback
             # Cross-namespace is not possible: oauth2-proxy lives in this
             # namespace precisely so it can reach the ClusterIP Service by
             # short name. The port matches the Service, not the container.
@@ -37,7 +37,7 @@ spec:
             - --email-domain=*
             - --cookie-secure=true
             # Namespaced cookie. A shared name across apps on
-            # *.lab.kalitsune.net would let one app's session cookie be sent
+            # *.geod.es would let one app's session cookie be sent
             # to another, since cookies ignore port and path by default.
             - --cookie-name=_oauth2_proxy_9router
             - --session-store-type=cookie

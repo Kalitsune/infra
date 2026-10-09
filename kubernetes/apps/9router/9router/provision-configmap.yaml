@@ -255,7 +255,7 @@ data:
     // uses, mounted from the same Secret. Pocket ID accepts several redirect
     // URIs per client, so the operator adds this one alongside the existing
     // oauth2-proxy callback:
-    //   https://9router.lab.kalitsune.net/api/auth/oidc/callback
+    //   https://9router.geod.es/api/auth/oidc/callback
     //
     // oidcConfigured is computed by the app as:
     //   !!(oidcIssuerUrl && oidcClientId && oidcClientSecret)

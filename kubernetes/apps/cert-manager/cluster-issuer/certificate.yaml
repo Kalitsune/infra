@@ -7,11 +7,11 @@ spec:
   secretName: apps-tls
   dnsNames:
     # A wildcard matches exactly one label, so "*.kalitsune.net" does NOT
-    # cover "radarr.lab.kalitsune.net". Each subdomain level in use needs
+    # cover "radarr.geod.es". Each subdomain level in use needs
     # its own wildcard entry or TLS fails with curl exit 60 (cert verify).
     - "*.kalitsune.net"
-    # radarr/sonarr/prowlarr/bazarr/torrent .lab.kalitsune.net
-    - "*.lab.kalitsune.net"
+    # radarr/sonarr/prowlarr/bazarr/torrent .geod.es
+    - "*.geod.es"
     - "*.hermes.kalitsune.net"
     # Agent dashboards are moving to <name>.agents.kalitsune.net, one label per
     # agent identity. Same exposure as *.hermes.kalitsune.net (public listener,
