@@ -24,12 +24,34 @@ REPO = pathlib.Path(__file__).resolve().parents[3]
 NEW_NS = "agents"
 
 # (repo path, live namespace, secret name)
+#
+# Two shapes live here. Files with `encrypted_regex: ^(data|stringData)$` keep
+# their metadata in plaintext, so only the namespace line is wrong. The rest are
+# whole-file encrypted — `kind` and `metadata` are ciphertext too, so the stale
+# `namespace: hermes` is unreadable and unfixable in place, and Flux would apply
+# them straight back into `hermes` while the workloads wait in `agents` for
+# Secrets that never arrive. Both shapes are rebuilt the same way; the output is
+# always partially-encrypted so the namespace stays auditable from the repo.
 TARGETS = [
     ("kubernetes/apps/agents/umami/matrix-secret.yaml", "hermes", "hermes-matrix-secrets-default"),
     ("kubernetes/apps/agents/hale/matrix-secret.yaml", "hermes", "homelab-expert-matrix-secrets"),
     ("kubernetes/apps/agents/finnegan/a2a-secret.yaml", "hermes", "finnegan-a2a"),
     ("kubernetes/apps/agents/dashboard/oidc-secret.yaml", "hermes", "agents-dashboard-oidc"),
+    ("kubernetes/apps/agents/secret.yaml", "hermes", "hermes-secrets"),
+    ("kubernetes/apps/agents/hale/secret.yaml", "hermes", "hermes-infra-expert-secrets"),
+    ("kubernetes/apps/agents/hale/a2a-secret.yaml", "hermes", "homelab-expert-a2a"),
+    ("kubernetes/apps/agents/umami/secrets.yaml", "hermes", "hermes-secret"),
+    ("kubernetes/apps/agents/umami/a2a-secret.yaml", "hermes", "hermes-a2a"),
+    ("kubernetes/apps/agents/umami/oauth2-secret.yaml", "hermes", "oauth2-proxy-secret"),
 ]
+
+# Secret names the HelmReleases reference, where the live name no longer matches
+# the new agent identity. Renaming the Secret and its references together is
+# safe; renaming only one side is what leaves a pod stuck on a missing Secret.
+RENAME = {
+    "homelab-expert-a2a": "hale-a2a",
+    "homelab-expert-matrix-secrets": "hale-matrix-secrets",
+}
 
 
 def live_plaintext(ns, name):
@@ -48,24 +70,32 @@ def rebuild(relpath, ns, name):
     old = yaml.safe_load(dest.read_text())
     sops_meta = old.get("sops") or {}
     regex = sops_meta.get("encrypted_regex")
-    if regex != "^(data|stringData)$":
-        return f"SKIP {relpath}: encrypted_regex={regex!r}, refusing to guess"
+    whole_file = regex is None
 
     values = live_plaintext(ns, name)
     if not values:
         return f"SKIP {relpath}: live Secret {ns}/{name} has no data"
 
+    if whole_file:
+        # metadata and kind are ciphertext, so the repo's key set is readable
+        # but its names are not encrypted — compare those.
+        old_keys = set(k for k in (old.get("stringData") or old.get("data") or {}))
+    else:
+        if regex != "^(data|stringData)$":
+            return f"SKIP {relpath}: encrypted_regex={regex!r}, refusing to guess"
+        old_keys = set((old.get("stringData") or old.get("data") or {}).keys())
+
     # Preserve the key set exactly: a dropped key silently unconfigures the app.
-    old_keys = set((old.get("stringData") or old.get("data") or {}).keys())
     if old_keys != set(values):
         return (f"SKIP {relpath}: key mismatch repo={sorted(old_keys)} "
                 f"live={sorted(values)}")
 
+    new_name = RENAME.get(name, name)
     doc = {
         "apiVersion": "v1",
         "kind": "Secret",
-        "metadata": {"name": name, "namespace": NEW_NS},
-        "type": old.get("type", "Opaque"),
+        "metadata": {"name": new_name, "namespace": NEW_NS},
+        "type": "Opaque" if whole_file else old.get("type", "Opaque"),
         "stringData": values,
     }
 
@@ -105,6 +135,9 @@ def rebuild(relpath, ns, name):
     if (check.get("metadata") or {}).get("namespace") != NEW_NS:
         tmp.unlink(missing_ok=True)
         return f"FAIL {relpath}: metadata.namespace not readable as {NEW_NS}"
+    if (check.get("metadata") or {}).get("name") != new_name:
+        tmp.unlink(missing_ok=True)
+        return f"FAIL {relpath}: metadata.name not readable as {new_name}"
     enc_vals = check.get("stringData") or {}
     if set(enc_vals) != set(values):
         tmp.unlink(missing_ok=True)
@@ -114,7 +147,10 @@ def rebuild(relpath, ns, name):
         return f"FAIL {relpath}: some values left unencrypted"
 
     tmp.replace(dest)
-    return f"OK   {relpath}: {len(values)} key(s) -> namespace={NEW_NS}"
+    rename = f" (renamed from {name})" if new_name != name else ""
+    shape = "whole-file" if whole_file else "partial"
+    return (f"OK   {relpath}: {len(values)} key(s) -> {NEW_NS}/{new_name}"
+            f"{rename} [was {shape}]")
 
 
 if __name__ == "__main__":

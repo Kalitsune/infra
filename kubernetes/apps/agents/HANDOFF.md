@@ -15,15 +15,16 @@ State as of the `agents-namespace-rename` branch. Nothing here is deployed:
   See [Data migration](#data-migration) below.
 - `check-rename.py` passes: every namespaced object builds into `agents`,
   `soul.text` parses, no stale machine-readable refs.
-- The four MAC-protected SOPS secrets are rebuilt in the `agents` namespace, so
-  there is no operator handoff left.
+- All ten SOPS secrets rebuilt in the `agents` namespace, and every secret
+  reference in the built manifests resolves. No operator handoff left.
+- Both new PVs patched to `persistentVolumeReclaimPolicy: Retain`.
 
 ## What the operator must do before merging
 
-Nothing is blocked. The four SOPS secrets that carried `namespace: hermes` have
-been rebuilt and re-encrypted — see [SOPS secrets](#sops-secrets).
+Nothing is blocked. Review and merge; `main` is the deploy.
 
-Review and merge; `main` is the deploy.
+Merging terminates the session running this migration (it rolls `hale`'s own
+StatefulSet), so it is the last step.
 
 ## SOPS secrets
 
@@ -33,30 +34,52 @@ this migration (Flux fails decryption for the whole kustomization, and the
 namespace never materializes).
 
 Without the age private key the existing ciphertext cannot be read back, but
-all four secrets were already deployed, so their plaintext was readable from
+all ten secrets were already deployed, so their plaintext was readable from
 the live cluster. `rebuild-sops-ns.py` rebuilds each file from
 `kubectl get secret -o json` and re-encrypts to the public recipient in
-`.sops.yaml`:
+`.sops.yaml`.
+
+Four were partially encrypted (plaintext metadata, stale `namespace: hermes`):
 
 | File | Secret | Keys |
 | --- | --- | --- |
 | `umami/matrix-secret.yaml` | `hermes-matrix-secrets-default` | 9 |
-| `hale/matrix-secret.yaml` | `homelab-expert-matrix-secrets` | 9 |
+| `hale/matrix-secret.yaml` | `hale-matrix-secrets` *(renamed)* | 9 |
 | `finnegan/a2a-secret.yaml` | `finnegan-a2a` | 1 |
 | `dashboard/oidc-secret.yaml` | `agents-dashboard-oidc` | 1 |
 
-Verified: key sets match the live Secrets exactly, `metadata.namespace` reads
-`agents` in plaintext, every value is `ENC[AES256_GCM...]`, and no live
-credential value appears anywhere under `kubernetes/`.
+Six more were **whole-file** encrypted — `kind` and `metadata` are ciphertext,
+so the stale `namespace: hermes` was invisible *and* unfixable in place. Flux
+would have applied them straight back into `hermes` while the workloads waited
+in `agents` for Secrets that never arrived. Rebuilt as partially-encrypted so
+the namespace is auditable from the repo from now on:
 
-Seven more secrets are whole-file SOPS (`kind` and `metadata` are ciphertext);
-they carry no namespace in plaintext and need nothing.
+| File | Secret | Keys |
+| --- | --- | --- |
+| `secret.yaml` | `hermes-secrets` | 2 |
+| `hale/secret.yaml` | `hermes-infra-expert-secrets` | 5 |
+| `hale/a2a-secret.yaml` | `hale-a2a` *(renamed)* | 1 |
+| `umami/secrets.yaml` | `hermes-secret` | 1 |
+| `umami/a2a-secret.yaml` | `hermes-a2a` | 1 |
+| `umami/oauth2-secret.yaml` | `oauth2-proxy-secret` | 3 |
+
+Two Secrets were renamed to match the new identity, because the HelmReleases
+already referenced the new names while the Secrets still carried the old ones —
+`hale-a2a` and `hale-matrix-secrets`. A dangling `secretRef` does not fail a
+`kustomize build`; it strands the pod in `CreateContainerConfigError` after the
+merge, which is exactly when nobody is watching.
+
+Verified: key sets match the live Secrets exactly, `metadata.namespace` reads
+`agents` in plaintext, every value is `ENC[AES256_GCM...]`, every `secretRef` /
+`secretKeyRef` / `secretName` in the built manifests resolves to a declared
+Secret (only `9router-agent-keys` is absent, created by the 9router Job and
+marked `optional: true`), and no live credential value appears anywhere under
+`kubernetes/`.
 
 One key name inside a SOPS payload still encodes the old identity:
 `A2A_TOKEN_HOMELAB_EXPERT` in `hermes-a2a`, referenced by
-`a2a_agents.hale.auth.token`. Left alone on purpose — the rename has to happen
-on both sides at once, and that secret's plaintext is not fully reconstructible
-from the live cluster.
+`a2a_agents.hale.auth.token`. Left alone deliberately — renaming it means
+touching both sides in one commit, and it is cosmetic.
 
 ### The trap in rebuilding a SOPS file
 
@@ -111,15 +134,20 @@ disk; 727 MB of it is state worth keeping.
 
 ### Reclaim policy
 
-Both new PVs are `Delete`, because `storageclass/truenas-nfs` sets
-`reclaimPolicy: Delete` and the policy is fixed at provision time. The old
-`hermes` volumes are `Retain` and survive as the rollback path:
+`storageclass/truenas-nfs` sets `reclaimPolicy: Delete` and the policy is fixed
+at provision time, so both new PVs were created as `Delete`. Both have since
+been patched to `Retain`:
+
+- `pvc-f4921cd5-...` — `agents/data-hale-0`, 5Gi, `Retain`
+- `pvc-b699b489-...` — `agents/data-umami-0`, 5Gi, `Retain`
+
+The old `hermes` volumes are also `Retain` and survive as the rollback path:
 
 - `pvc-8c19eceb-...` — `hermes/data-homelab-expert-0`, 5Gi
 - `pvc-76e495fb-...` — `hermes/data-hermes-hermes-agent-0`, 5Gi
 
-Patch the new PVs to `Retain` once the cutover is confirmed good, or the data
-is one `helm uninstall` away from gone.
+With all four on `Retain`, no `helm uninstall` or PVC delete on either side can
+reclaim the data; a released volume has to be deleted deliberately.
 
 `hermes/data-finnegan-0` is `Delete` and only hours old; finnegan gets a fresh
 volume.
