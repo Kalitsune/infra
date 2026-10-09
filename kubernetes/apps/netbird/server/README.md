@@ -2,9 +2,9 @@
 
 `netbirdio/netbird-server` 0.80.0 — a single binary carrying management, signal,
 relay and the embedded Dex IdP — plus the dashboard SPA in the same pod.
-Served from `https://netbird.kalitsune.net`.
+Served from `https://net.geod.es`.
 
-## Why the apex, not `lab.`
+## Why the apex
 
 A mesh VPN is only useful if peers can reach the control plane from hostile
 networks: a phone on mobile data, a laptop in a cafe. That is the same argument

@@ -12,8 +12,8 @@ configMapGenerator:
     namespace: netbird
     behavior: create
     literals:
-      - NETBIRD_MGMT_API_ENDPOINT=https://netbird.kalitsune.net
-      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://netbird.kalitsune.net
+      - NETBIRD_MGMT_API_ENDPOINT=https://net.geod.es
+      - NETBIRD_MGMT_GRPC_API_ENDPOINT=https://net.geod.es
       # AUTH_* describe the EMBEDDED IdP (Dex), which netbird-server itself
       # hosts at /oauth2 on this same hostname -- not Pocket ID. Pointing
       # AUTH_AUTHORITY at id.kalitsune.net cannot work: Pocket ID has no
@@ -24,7 +24,7 @@ configMapGenerator:
       - AUTH_AUDIENCE=netbird-dashboard
       - AUTH_CLIENT_ID=netbird-dashboard
       - AUTH_CLIENT_SECRET=
-      - AUTH_AUTHORITY=https://netbird.kalitsune.net/oauth2
+      - AUTH_AUTHORITY=https://net.geod.es/oauth2
       - USE_AUTH0=false
       - AUTH_SUPPORTED_SCOPES=openid profile email groups
       # Must match server.auth.dashboardRedirectURIs in the config Secret.
