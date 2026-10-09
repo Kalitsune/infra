@@ -12,5 +12,9 @@ spec:
     name: flux-system
   dependsOn:
     - name: cert-manager
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
   wait: true
   timeout: 5m

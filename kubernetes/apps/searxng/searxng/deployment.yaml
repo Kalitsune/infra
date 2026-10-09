@@ -46,7 +46,7 @@ spec:
             # `server.base_url` from settings.yml (settings_defaults.py gives
             # it environ_name SEARXNG_BASE_URL).
             - name: SEARXNG_BASE_URL
-              value: https://search.kalitsune.net/
+              value: https://search.geod.es/
             # Flask session + image-proxy HMAC key. Without it SearXNG runs
             # with the literal "ultrasecretkey" from the shipped settings and
             # logs `server.secret_key is not changed` (webapp.py:1357).

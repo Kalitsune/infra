@@ -1,6 +1,6 @@
 # SearXNG
 
-Self-hosted metasearch at `https://search.kalitsune.net`. Aggregates upstream
+Self-hosted metasearch at `https://search.geod.es`. Aggregates upstream
 engines (Google, DuckDuckGo, Brave, Wikipedia, …) and returns results without
 tracking or profiling the user.
 
@@ -8,7 +8,7 @@ Two consumers, and they reach it by different paths:
 
 | Consumer | Path | Why |
 | --- | --- | --- |
-| Humans | `https://search.kalitsune.net` via the `apps` Gateway | the requested hostname |
+| Humans | `https://search.geod.es` via the `apps` Gateway | the requested hostname |
 | Hermes agents | `http://searxng.searxng.svc.cluster.local:8080` | in-cluster, no DNS/TLS/gateway in the way |
 
 The agents are configured with `web.search_backend: searxng` and
@@ -41,7 +41,7 @@ Deployment instead, because `searx/settings_defaults.py` gives those keys an
 | Setting | Env var | Set to |
 | --- | --- | --- |
 | `server.secret_key` | `SEARXNG_SECRET` | SOPS secret (never in the ConfigMap) |
-| `server.base_url` | `SEARXNG_BASE_URL` | `https://search.kalitsune.net/` |
+| `server.base_url` | `SEARXNG_BASE_URL` | `https://search.geod.es/` |
 | `server.limiter` | `SEARXNG_LIMITER` | `false` — see below |
 
 `search.formats` has **no** env override, which is the only reason the
@@ -135,7 +135,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' http://127.0.0.1:8080/healthz
 curl -sS 'http://127.0.0.1:8080/search?q=test&format=json' | jq '.results | length'
 
 # through the gateway
-curl -sSI https://search.kalitsune.net/
+curl -sSI https://search.geod.es/
 ```
 
 A `200` on `/healthz`, a non-zero result count on the JSON search, and a `200`

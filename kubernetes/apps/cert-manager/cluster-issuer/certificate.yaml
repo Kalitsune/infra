@@ -21,6 +21,8 @@ spec:
     # requests.watch.kalitsune.net (seerr)
     - "*.watch.kalitsune.net"
     - "*.matrix.kalitsune.net"
+    - "*.geod.es"
+    - "geod.es"
   issuerRef:
     name: letsencrypt-prod
     kind: ClusterIssuer
