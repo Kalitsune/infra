@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/agents/homelab-expert
+  path: ./kubernetes/apps/hermes/homelab-expert
   prune: true
   sourceRef:
     kind: GitRepository

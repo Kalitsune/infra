@@ -5,7 +5,7 @@ metadata:
   namespace: flux-system
 spec:
   interval: 10m
-  path: ./kubernetes/apps/agents/hermes
+  path: ./kubernetes/apps/hermes/hermes
   prune: true
   sourceRef:
     kind: GitRepository
