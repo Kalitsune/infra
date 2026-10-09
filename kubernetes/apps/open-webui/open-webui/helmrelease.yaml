@@ -68,9 +68,37 @@ spec:
         value: "true"
       - name: OAUTH_CODE_CHALLENGE_METHOD
         value: "S256"
+      # Pocket ID is the only account source: let it create the account on
+      # first login (ENABLE_SIGNUP above stays false, so the local form can
+      # still never create one).
+      - name: ENABLE_OAUTH_SIGNUP
+        value: "true"
+      # Claim an existing local account when the Pocket ID email matches.
+      # Only safe because Pocket ID verifies emails — an unverified-email IdP
+      # would make this an account-takeover primitive.
+      - name: OAUTH_MERGE_ACCOUNTS_BY_EMAIL
+        value: "true"
+      # Skip the "Continue with Pocket ID" click: /auth redirects straight to
+      # the IdP. Requires exactly one provider, ENABLE_LOGIN_FORM=false (set
+      # above) and no LDAP (ENABLE_LDAP unset = false), or it does nothing.
+      # Escape hatch for a local login is /auth?form=true.
+      - name: OAUTH_AUTO_REDIRECT
+        value: "true"
+      # Pocket ID is authoritative for identity, so re-read the claims each
+      # login instead of freezing whatever the first login happened to send.
+      - name: OAUTH_UPDATE_EMAIL_ON_LOGIN
+        value: "true"
+      - name: OAUTH_UPDATE_NAME_ON_LOGIN
+        value: "true"
       # Sync avatar from Pocket ID (the "picture" claim) on every login
       - name: OAUTH_UPDATE_PICTURE_ON_LOGIN
         value: "true"
+      # The chart only derives WEBUI_URL from ingress.host or route.hostnames,
+      # and this release uses neither (the HTTPRoute is hand-written in
+      # httproute.yaml), so it was empty and OAuth callback URLs fell back to
+      # request.base_url. Must match httproute.yaml's hostname.
+      - name: WEBUI_URL
+        value: "https://open-webui.lab.kalitsune.net"
       # Open WebUI marks most settings PersistentConfig: on FIRST boot they
       # are copied from env into the SQLite `config` table, and from then on
       # the DB wins and the env var is ignored forever. That silently pinned
