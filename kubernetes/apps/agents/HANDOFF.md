@@ -15,30 +15,59 @@ State as of the `agents-namespace-rename` branch. Nothing here is deployed:
   See [Data migration](#data-migration) below.
 - `check-rename.py` passes: every namespaced object builds into `agents`,
   `soul.text` parses, no stale machine-readable refs.
+- The four MAC-protected SOPS secrets are rebuilt in the `agents` namespace, so
+  there is no operator handoff left.
 
 ## What the operator must do before merging
 
-Four SOPS secrets still say `namespace: hermes`. `metadata.namespace` is
-covered by the SOPS MAC, so it cannot be edited in place — rewriting it without
-re-encrypting is what broke the first attempt at this migration (Flux fails
-decryption for the whole kustomization, and the namespace never materializes).
-These files are byte-identical to their originals; change the one line and
-re-encrypt with the age key:
+Nothing is blocked. The four SOPS secrets that carried `namespace: hermes` have
+been rebuilt and re-encrypted — see [SOPS secrets](#sops-secrets).
 
-| File | Secret |
-| --- | --- |
-| `umami/matrix-secret.yaml` | `hermes-matrix-secrets-default` |
-| `hale/matrix-secret.yaml` | `homelab-expert-matrix-secrets` |
-| `finnegan/a2a-secret.yaml` | `finnegan-a2a` |
-| `dashboard/oidc-secret.yaml` | `agents-dashboard-oidc` |
+Review and merge; `main` is the deploy.
+
+## SOPS secrets
+
+`metadata.namespace` is covered by the SOPS MAC, so it cannot be edited in
+place — rewriting it without re-encrypting is what broke the first attempt at
+this migration (Flux fails decryption for the whole kustomization, and the
+namespace never materializes).
+
+Without the age private key the existing ciphertext cannot be read back, but
+all four secrets were already deployed, so their plaintext was readable from
+the live cluster. `rebuild-sops-ns.py` rebuilds each file from
+`kubectl get secret -o json` and re-encrypts to the public recipient in
+`.sops.yaml`:
+
+| File | Secret | Keys |
+| --- | --- | --- |
+| `umami/matrix-secret.yaml` | `hermes-matrix-secrets-default` | 9 |
+| `hale/matrix-secret.yaml` | `homelab-expert-matrix-secrets` | 9 |
+| `finnegan/a2a-secret.yaml` | `finnegan-a2a` | 1 |
+| `dashboard/oidc-secret.yaml` | `agents-dashboard-oidc` | 1 |
+
+Verified: key sets match the live Secrets exactly, `metadata.namespace` reads
+`agents` in plaintext, every value is `ENC[AES256_GCM...]`, and no live
+credential value appears anywhere under `kubernetes/`.
 
 Seven more secrets are whole-file SOPS (`kind` and `metadata` are ciphertext);
 they carry no namespace in plaintext and need nothing.
 
 One key name inside a SOPS payload still encodes the old identity:
 `A2A_TOKEN_HOMELAB_EXPERT` in `hermes-a2a`, referenced by
-`a2a_agents.hale.auth.token`. It is left alone on purpose — renaming the key
-requires decrypting the secret. Rename both sides together, later.
+`a2a_agents.hale.auth.token`. Left alone on purpose — the rename has to happen
+on both sides at once, and that secret's plaintext is not fully reconstructible
+from the live cluster.
+
+### The trap in rebuilding a SOPS file
+
+`sops` picks its input store by **file extension**. A temp file named
+`foo.yaml.rebuilt` is treated as binary: sops ignores `--encrypted-regex` and
+encrypts the entire document into one JSON `data` field, destroying the
+plaintext metadata the kustomization needs. The output looks encrypted and
+`grep ENC\[` passes, so it survives a casual check. `rebuild-sops-ns.py`
+keeps a `.yaml` suffix and asserts afterwards that `kind: Secret`,
+`metadata.namespace`, and the full key set are all still readable.
+
 
 ## Data migration
 
@@ -118,4 +147,12 @@ kustomize build kubernetes/apps/agents/umami  >/dev/null
 python kubernetes/apps/agents/check-rename.py   # needs pyyaml + kustomize
 ```
 
-Expect the four SOPS files listed as pending until they are re-encrypted.
+`check-rename.py` should report no pending SOPS files. The remaining
+"stale ref" hits are intentional: prose in `soul.text`, the
+`homelab-expert.hermes.kalitsune.net` legacy alias, the
+`homelab-expert-matrix-secrets` Secret name, and the checker's own grep
+pattern.
+
+`rebuild-sops-ns.py` is idempotent and safe to re-run while the old Secrets
+are still live; it refuses to write if the key set or namespace comes back
+wrong.
