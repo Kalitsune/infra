@@ -638,5 +638,7 @@ spec:
     #   hale.agents.kalitsune.net. Resource names are deliberately unchanged.
     # generation 8: A2A_PEER_TOKENS composed in env so finnegan's token
     #   (finnegan-a2a) is accepted alongside wren's.
+    # generation 9: 9router-agent-keys republished into this namespace after the
+    #   agents-namespace revert; envFrom is read once at start, so roll the pod.
     podAnnotations:
-      kalitsune.net/env-generation: "8"
+      kalitsune.net/env-generation: "9"
