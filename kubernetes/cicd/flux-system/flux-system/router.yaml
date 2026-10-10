@@ -1,0 +1,22 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: router
+  namespace: flux-system
+spec:
+  interval: 10m
+  path: ./kubernetes/apps/agents/router
+  prune: true
+  sourceRef:
+    kind: GitRepository
+    name: flux-system
+  # The `agents` namespace is created by the `umami` Kustomization, so this
+  # must not reconcile before it — same ordering as hale/finnegan/dashboard.
+  dependsOn:
+    - name: umami
+  decryption:
+    provider: sops
+    secretRef:
+      name: sops-age
+  wait: true
+  timeout: 5m

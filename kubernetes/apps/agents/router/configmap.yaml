@@ -1,0 +1,160 @@
+---
+# LiteLLM proxy — one OpenAI-compatible front door for every agent.
+#
+# WHAT THIS IS NOT
+#
+# The request said "lightllm". ModelTC/LightLLM is a *GPU inference engine*
+# (it loads weights and serves them with CUDA kernels). Every node in this
+# cluster reports `nvidia.com/gpu: none`, so it cannot run here at all. The
+# operator's earlier, repeated ask was **LiteLLM** ("I'd like litellm because
+# it's fast"), which is a routing proxy and needs no GPU. That is what this is.
+#
+# WHY IT STILL POINTS AT 9ROUTER
+#
+# Measured, not assumed: 9Router's database holds three *OAuth subscription*
+# connections (Claude, Antigravity, Codex) and zero API keys. LiteLLM has no
+# Anthropic-subscription OAuth refresh — it can only forward a client-supplied
+# `sk-ant-oat01-*` header, which expires in ~8h and which nothing here holds.
+# So LiteLLM cannot replace 9Router; it sits *in front* of it. 9Router keeps
+# doing credential refresh, LiteLLM owns the agent-facing API surface
+# (retries, per-caller virtual keys later, one place to add a second upstream).
+#
+# NO DATABASE, DELIBERATELY
+#
+# `DATABASE_URL` is unset, so the proxy runs config-only: `master_key` is the
+# single credential, `/key/generate` returns 401 (verified) and the admin UI
+# has nothing to log into. That keeps this release stateless — no PVC, no
+# Postgres, rescheduleable anywhere. Adding virtual keys per agent later means
+# adding Postgres (local-path, per AGENT.md) and is a deliberate next step,
+# not an accident of this one.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: router-config
+  namespace: agents
+data:
+  # The model list is EXPLICIT, one entry per 9Router model, and that is
+  # load-bearing.
+  #
+  # Provider wildcards (`model_name: "cc/*"` -> `openai/cc/*`) route correctly
+  # but destroy /v1/models: LiteLLM answers it from its own *static* OpenAI
+  # catalogue grafted onto the prefix, so the list came back with 615 entries
+  # including `cc/gpt-image-1` and `cx/sora-2-pro` — models 9Router does not
+  # have and which 404 when called. Measured; `litellm_settings.public_model_groups`
+  # does NOT filter that list (tried, still 615).
+  #
+  # With explicit entries, /v1/models returns exactly these ids and nothing
+  # else, which is what makes the Open WebUI picker usable.
+  #
+  # To add a model: add it here, bump config-generation in deployment.yaml.
+  # The source of truth for what exists upstream is:
+  #   curl -H "Authorization: Bearer ***  http://9router.9router.svc.cluster.local:20128/v1/models
+  config.yaml: |
+    model_list:
+      # --- combos: 9Router's own fallback chains. Prefer these. ---
+      - model_name: high-effort
+        litellm_params: &nr
+          model: openai/high-effort
+          api_base: http://9router.9router.svc.cluster.local:20128/v1
+          api_key: os.environ/ROUTER_9ROUTER_KEY
+      - model_name: medium-effort
+        litellm_params:
+          <<: *nr
+          model: openai/medium-effort
+      - model_name: fast-af
+        litellm_params:
+          <<: *nr
+          model: openai/fast-af
+
+      # --- cc/: Claude subscription ---
+      - model_name: cc/claude-opus-5-5
+        litellm_params:
+          <<: *nr
+          model: openai/cc/claude-opus-5-5
+      - model_name: cc/claude-opus-5
+        litellm_params:
+          <<: *nr
+          model: openai/cc/claude-opus-5
+      - model_name: cc/claude-fable-5-1
+        litellm_params:
+          <<: *nr
+          model: openai/cc/claude-fable-5-1
+      - model_name: cc/claude-sonnet-5-5
+        litellm_params:
+          <<: *nr
+          model: openai/cc/claude-sonnet-5-5
+      - model_name: cc/claude-sonnet-5
+        litellm_params:
+          <<: *nr
+          model: openai/cc/claude-sonnet-5
+      - model_name: cc/claude-haiku-4-5-20251001
+        litellm_params:
+          <<: *nr
+          model: openai/cc/claude-haiku-4-5-20251001
+
+      # --- ag/: Antigravity (Google AI Pro) ---
+      - model_name: ag/gemini-3.8-flash-high
+        litellm_params:
+          <<: *nr
+          model: openai/ag/gemini-3.8-flash-high
+      - model_name: ag/gemini-3.8-flash-medium
+        litellm_params:
+          <<: *nr
+          model: openai/ag/gemini-3.8-flash-medium
+      - model_name: ag/gemini-3.8-flash-low
+        litellm_params:
+          <<: *nr
+          model: openai/ag/gemini-3.8-flash-low
+      - model_name: ag/claude-sonnet-4-6
+        litellm_params:
+          <<: *nr
+          model: openai/ag/claude-sonnet-4-6
+      - model_name: ag/claude-opus-4-6-thinking
+        litellm_params:
+          <<: *nr
+          model: openai/ag/claude-opus-4-6-thinking
+      - model_name: ag/gpt-oss-120b-medium
+        litellm_params:
+          <<: *nr
+          model: openai/ag/gpt-oss-120b-medium
+
+      # --- cx/: Codex (ChatGPT subscription) ---
+      #
+      # The `[1m]` long-context variants are deliberately absent: 9Router
+      # advertises cx/gpt-6-astra[1m] in /v1/models but calling it returns
+      # `[codex/gpt-6-astra] [400] The 'gpt-6-astra' mode...` from upstream, so
+      # listing it would publish a model that always fails. Verified with a
+      # live call, not assumed.
+      - model_name: cx/gpt-6.1-sol
+        litellm_params:
+          <<: *nr
+          model: openai/cx/gpt-6.1-sol
+      - model_name: cx/gpt-6-sol
+        litellm_params:
+          <<: *nr
+          model: openai/cx/gpt-6-sol
+      - model_name: cx/gpt-6-luna
+        litellm_params:
+          <<: *nr
+          model: openai/cx/gpt-6-luna
+      - model_name: cx/gpt-5.6-terra
+        litellm_params:
+          <<: *nr
+          model: openai/cx/gpt-5.6-terra
+      - model_name: cx/gpt-5.5
+        litellm_params:
+          <<: *nr
+          model: openai/cx/gpt-5.5
+
+    litellm_settings:
+      # 9Router is OpenAI-compatible but not identical: drop params it does not
+      # know rather than 400-ing the caller.
+      drop_params: true
+      num_retries: 2
+      telemetry: false
+
+    general_settings:
+      # The ONE credential. With no database this is the only accepted key, so
+      # every caller (agents, Open WebUI) presents it. Per-caller virtual keys
+      # need Postgres — see the header.
+      master_key: os.environ/LITELLM_MASTER_KEY

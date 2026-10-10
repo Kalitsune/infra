@@ -1,0 +1,13 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  # The `agents` namespace and oauth2-proxy-secret are owned by the `umami`
+  # Kustomization, which this one dependsOn. Nothing here creates them.
+  #
+  # ../secret.yaml is deliberately NOT included: that is hermes-secrets
+  # (HASS_TOKEN, HONCHO_API_KEY), which this release does not consume. Pulling
+  # it in would add a second Kustomization claiming the same object.
+  - secret.yaml
+  - configmap.yaml
+  - deployment.yaml
+  - httproute.yaml

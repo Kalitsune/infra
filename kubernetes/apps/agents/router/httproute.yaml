@@ -1,0 +1,46 @@
+---
+# Public route for the LiteLLM proxy.
+#
+# WHY THIS IS PUBLISHED AT ALL, AND WHY WITHOUT oauth2-proxy
+#
+# Unlike 9Router (whose dashboard is a single shared password, hence the
+# oauth2-proxy in front of it), this release serves *only* an API:
+#   - the admin UI cannot be logged into (no database, POST /login -> 401)
+#   - Swagger/Redoc are off    (NO_DOCS / NO_REDOC -> /docs, /redoc 404)
+#   - every /v1 path and every management path requires the master key —
+#     measured against the rendered config: /v1/models 401,
+#     /v1/chat/completions 401, /key/generate 401, /model/info 401, while
+#     /health/liveliness and /health/readiness answer 200 for probes.
+#
+# Two surfaces remain reachable unauthenticated and are accepted: /ui/ serves
+# static assets (a dead end, see deployment.yaml) and /openapi.json serves the
+# schema. Neither exposes a credential or an upstream. If that changes, put
+# oauth2-proxy in front of those two prefixes rather than the whole host —
+# gating /v1 with a browser flow would break every caller.
+#
+# An OIDC browser flow in front of an API is meaningless to the callers this
+# exists for (agents, Open WebUI, the operator's laptop), so the bearer key is
+# the gate. That is the same split already reasoned through in
+# apps/9router/README.md, just with the dashboard half absent.
+#
+# `router.agents.kalitsune.net` is the hostname the operator asked for and
+# matches the per-agent convention (<name>.agents.kalitsune.net). It is on the
+# same public `apps` Gateway listener as every other host here — the subdomain
+# enforces nothing, the master key does. *.agents.kalitsune.net is already in
+# the apps-tls certificate and already CNAMEs to the dynamic anchor, so no DNS
+# or certificate change ships with this.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: router
+  namespace: agents
+spec:
+  parentRefs:
+    - name: apps
+      namespace: envoy-gateway-system
+  hostnames:
+    - router.agents.kalitsune.net
+  rules:
+    - backendRefs:
+        - name: router
+          port: 4000

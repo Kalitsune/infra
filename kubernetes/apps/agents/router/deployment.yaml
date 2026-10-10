@@ -1,0 +1,143 @@
+---
+# LiteLLM proxy for every agent in this namespace.
+#
+# Stateless: no PVC, no database (see configmap.yaml for why). The whole
+# configuration is the mounted ConfigMap plus two env vars, so this pod can be
+# rescheduled anywhere and loses nothing.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: router
+  namespace: agents
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: router
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: router
+      annotations:
+        # A ConfigMap edit does NOT restart pods: litellm reads config.yaml
+        # once at startup. Bump this in the same commit as any configmap.yaml
+        # change or the new model list silently never loads while everything
+        # reports Ready.
+        #   generation 1: initial deploy
+        kalitsune.net/config-generation: "1"
+    spec:
+      securityContext:
+        # The image's entrypoint runs as root by default; nothing here needs
+        # it (no volume chown, no privileged port) and `restricted` PSA only
+        # warns on this cluster, so drop to nobody. Verified by running the
+        # image as 65534: litellm starts, serves, and needs only a writable
+        # HOME, which is why HOME points at the emptyDir below.
+        runAsNonRoot: true
+        runAsUser: 65534
+        runAsGroup: 65534
+        fsGroup: 65534
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: litellm
+          # Pinned tag + digest: the tag documents intent, the digest enforces
+          # it. An upgrade bumps BOTH.
+          #
+          # NOTE: `main-stable` currently resolves to this same digest, and
+          # there is no `v1.104.2-stable` tag — the `*-stable` series stopped
+          # at main-v1.66.0-stable. Use the plain version tag.
+          image: ghcr.io/berriai/litellm:v1.104.2@sha256:3d88bd757134a00e8c00237b85a021ab1f6d54abb9c1df750f411dbe7256a500
+          args: ["--config", "/etc/litellm/config.yaml", "--port", "4000"]
+          env:
+            # HOME must be writable: litellm touches it on startup and the
+            # image's default (/root) is not writable as uid 65534.
+            - name: HOME
+              value: /tmp
+            # No database, so the admin UI has nothing to authenticate
+            # against: POST /login returns 401 and no account can exist.
+            #
+            # MEASURED CORRECTION: this flag does NOT make /ui/ disappear —
+            # it still serves its 24 KB of static assets (200), and
+            # /openapi.json still answers 200 even with NO_DOCS. What the
+            # flag removes is the SSO/login path, so the page is a dead end
+            # rather than a gate. Do not read "/ui/ returns 200" as a
+            # misconfiguration; it is cosmetic and cannot be logged into.
+            - name: DISABLE_ADMIN_UI
+              value: "True"
+            # Swagger and Redoc enumerate every management endpoint
+            # (/docs and /redoc both 404 with these set; /openapi.json is
+            # unaffected and still serves the schema).
+            - name: NO_DOCS
+              value: "True"
+            - name: NO_REDOC
+              value: "True"
+            - name: LITELLM_MASTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: router-secrets
+                  key: LITELLM_MASTER_KEY
+            # The upstream credential: this proxy's own 9Router key, minted by
+            # the provisioning Job in apps/9router under machineId `router`.
+            # optional: true so a first-ever deploy does not wedge in
+            # CreateContainerConfigError while that Job is still pending.
+            - name: ROUTER_9ROUTER_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: 9router-agent-keys
+                  key: ROUTER_9ROUTER_KEY
+                  optional: true
+          ports:
+            - name: http
+              containerPort: 4000
+          # /health/liveliness and /health/readiness are unauthenticated
+          # (verified: 200 with no Authorization header, while /v1/models is
+          # 401). /health alone is NOT — it is the authenticated upstream
+          # check and would fail these probes.
+          startupProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 24
+          readinessProbe:
+            httpGet:
+              path: /health/readiness
+              port: http
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health/liveliness
+              port: http
+            periodSeconds: 30
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 1Gi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/litellm
+              readOnly: true
+            - name: home
+              mountPath: /tmp
+      volumes:
+        - name: config
+          configMap:
+            name: router-config
+        - name: home
+          emptyDir: {}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: router
+  namespace: agents
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: router
+  ports:
+    - name: http
+      port: 4000
+      targetPort: http
