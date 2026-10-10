@@ -1,0 +1,66 @@
+apiVersion: helm.toolkit.fluxcd.io/v2
+kind: HelmRelease
+metadata:
+  name: netbird-operator
+  namespace: netbird
+spec:
+  interval: 30m
+  chartRef:
+    kind: OCIRepository
+    name: netbird-operator
+    namespace: flux-system
+  install:
+    # The chart ships its CRDs under crds/, which Helm creates on install and
+    # never touches again. CreateReplace on upgrade is what makes the pinned
+    # version bump above actually land new CRD fields instead of leaving the
+    # controller reading a stale schema.
+    crds: Create
+    remediation:
+      retries: 3
+  upgrade:
+    crds: CreateReplace
+    cleanupOnFail: true
+    remediation:
+      strategy: rollback
+      retries: 3
+  values:
+    # Self-hosted control plane, not NetBird Cloud. The operator talks to the
+    # management API over this URL with a personal access token.
+    managementURL: https://net.geod.es
+    cluster:
+      # Becomes the NetBird network/resource name prefix.
+      name: homelab
+      dns: svc.cluster.local
+    netbirdAPI:
+      keyFromSecret:
+        name: netbird-operator-api-key
+        key: NB_API_KEY
+    # Pin the routing-peer client image instead of taking the operator's
+    # built-in default (0.74.7), so routing peers and the control plane stay on
+    # the same 0.80.x line.
+    routingClientImage: docker.io/netbirdio/netbird:0.80.0
+    webhook:
+      enableCertManager: true
+      # The chart's only webhook mutates pods on CREATE, cluster-wide, to
+      # inject SidecarProfile sidecars. At failurePolicy Fail with no selector,
+      # an unavailable operator blocks EVERY pod creation in the cluster --
+      # including the pods that would fix it. Scoped to namespaces that opt in,
+      # and failing open, because nothing here uses sidecar injection.
+      failurePolicy: Ignore
+      namespaceSelectors:
+        - key: netbird.io/sidecar-injection
+          operator: In
+          values:
+            - enabled
+    ingress:
+      # Deprecated upstream in favour of NetworkRouter/NetworkResource.
+      enabled: false
+    gatewayAPI:
+      # Beta upstream; the cluster's Envoy Gateway is unrelated to this knob.
+      enabled: false
+    operator:
+      replicaCount: 1
+      resources:
+        requests:
+          cpu: 50m
+          memory: 128Mi

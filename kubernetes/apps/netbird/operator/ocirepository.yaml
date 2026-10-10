@@ -1,0 +1,16 @@
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: OCIRepository
+metadata:
+  name: netbird-operator
+  namespace: flux-system
+spec:
+  interval: 24h
+  url: oci://ghcr.io/netbirdio/helm-charts/netbird-operator
+  layerSelector:
+    mediaType: application/vnd.cncf.helm.chart.content.v1.tar+gzip
+    operation: copy
+  ref:
+    # Pinned, not a range: the chart ships its CRDs under crds/, which Helm
+    # installs but never upgrades, so a surprise chart bump would leave the
+    # CRDs behind the controller that reads them.
+    tag: 0.8.0
