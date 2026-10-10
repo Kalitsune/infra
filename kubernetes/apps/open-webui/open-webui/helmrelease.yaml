@@ -39,11 +39,22 @@ spec:
     openaiBaseApiUrl: ""
     # Order is load-bearing: OPENAI_API_KEYS is a parallel `;`-joined list in
     # open-webui-openai-keys, matched to these URLs by index.
+    #
+    # Entry 4 is the LiteLLM proxy (apps/agents/router), which replaced the
+    # direct 9Router connection. 9Router is still what ultimately serves the
+    # models — the proxy holds its own minted key and fans out to it — but it
+    # is no longer called from here, so there is one place to add retries,
+    # a second upstream, or per-caller keys. Its credential is the router's
+    # LITELLM_MASTER_KEY.
+    #
+    # The three agent entries stay direct: they are Hermes agents, not model
+    # providers, and routing an agent through a model proxy would be
+    # meaningless.
     openaiBaseApiUrls:
       - "http://umami.agents.svc.cluster.local:8642/v1"
       - "http://hale.agents.svc.cluster.local:8642/v1"
       - "http://finnegan.agents.svc.cluster.local:8642/v1"
-      - "http://9router.9router.svc.cluster.local:20128/v1"
+      - "http://router.agents.svc.cluster.local:4000/v1"
     openaiApiKeysExistingSecret: "open-webui-openai-keys"
     openaiApiKeysExistingSecretKey: "keys"
     service:
