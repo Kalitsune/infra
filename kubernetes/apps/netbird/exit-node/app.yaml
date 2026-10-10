@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: exit-node
+  namespace: netbird
+spec:
+  # Parked at 0 until the operator lands a real setup key. The image's
+  # entrypoint runs `netbird up` under `set -e`, so a placeholder key is a
+  # permanent CrashLoopBackOff that buries real alerts. Set this to 1 in the
+  # SAME commit that lands the key.
+  replicas: 0
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: netbird-exit-node
+  template:
+    metadata:
+      labels:
+        app: netbird-exit-node
+    spec:
+      containers:
+        - name: netbird
+          image: docker.io/netbirdio/netbird:0.80.0
+          envFrom:
+            - secretRef:
+                name: netbird-exit-node-secret # NB_SETUP_KEY
+          env:
+            # The client reads NB_MANAGEMENT_URL and NB_SETUP_KEY from the
+            # environment (cobra SetFlagsFromEnvVars), which is how the
+            # upstream Kubernetes operator drives its own routing peers -- so
+            # the entrypoint needs no `netbird up` flags here.
+            - name: NB_MANAGEMENT_URL
+              value: "https://net.geod.es"
+            - name: NB_LOG_FILE
+              value: "console"
+            # Fine only because this is a single replica: every pod would
+            # otherwise register under the same dashboard name.
+            - name: NB_HOSTNAME
+              value: "cluster-exit-1"
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+                - SYS_RESOURCE
+                - SYS_ADMIN
+          # No MTU override: unlike the old gluetun-paired egress pod, this
+          # WireGuard interface is not nested inside another tunnel, so the
+          # 1280 default fits the 1500-byte pod interface.
+          #
+          # netbird issue #5391: a containerised exit node never gets the
+          # 0.0.0.0/0 accept rule in its netbird-rt-fwd chain, only per-route
+          # ones, so mesh clients reach the peer and then get no internet. The
+          # chain is rebuilt whenever a client reconnects, so this keeps
+          # re-asserting rather than running once. No nft in this image;
+          # iptables (nf_tables backend) is present and works.
+          #
+          # The loop goes to the background and the image's own entrypoint
+          # stays in the foreground, so a failed `netbird up` still exits the
+          # container instead of being masked by a wrapper that outlives it.
+          command:
+            - "/bin/sh"
+            - "-c"
+            - |
+              while :; do
+                if iptables -t filter -L netbird-rt-fwd >/dev/null 2>&1; then
+                  iptables -C netbird-rt-fwd -j ACCEPT >/dev/null 2>&1 \
+                    || iptables -I netbird-rt-fwd 1 -j ACCEPT
+                fi
+                sleep 60
+              done &
+              exec /usr/local/bin/netbird-entrypoint.sh
+          startupProbe:
+            exec:
+              command: ["netbird", "status", "--check", "startup"]
+            periodSeconds: 5
+            timeoutSeconds: 10
+            failureThreshold: 24
+          readinessProbe:
+            # `--check startup` asserts management AND signal are connected.
+            # `--check ready` passes while the daemon is merely idle, which
+            # reports a broken registration as healthy.
+            exec:
+              command: ["netbird", "status", "--check", "startup"]
+            periodSeconds: 30
+            timeoutSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
