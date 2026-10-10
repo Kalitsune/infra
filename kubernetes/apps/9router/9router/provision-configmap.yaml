@@ -57,6 +57,11 @@ data:
       hale: "HALE_9ROUTER_KEY",
       finnegan: "FINNEGAN_9ROUTER_KEY",
       laptop: "LAPTOP_9ROUTER_KEY",
+      // The LiteLLM proxy (apps/agents/router) is itself a consumer: it holds
+      // ONE upstream key and fans every agent's traffic through it. Its own
+      // machineId so it can be revoked in the dashboard without touching the
+      // agents' direct keys, which stay valid as a bypass if the proxy is down.
+      router: "ROUTER_9ROUTER_KEY",
     };
 
     // Consumers that are NOT Hermes agents get their own Secret in their own
