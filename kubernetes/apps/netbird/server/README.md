@@ -111,8 +111,18 @@ config.
 lock contention. That also makes the PVC node-bound — see the storage notes in
 the root `AGENT.md`.
 
-## Exit nodes
+## Exit nodes and cluster access
 
-`../../vpn-egress/` holds the gluetun+netbird egress pairs. They register as
-peers and are turned into exit nodes from the dashboard; nothing in this
-directory references them.
+`../exit-node/` is one plain client peer, promoted to an exit node from the
+dashboard, so mesh clients can send internet traffic out through this cluster's
+WAN. `../operator/` is the opposite direction: the netbird Kubernetes operator,
+whose `NetworkRouter`/`NetworkResource` CRDs expose in-cluster Services to the
+mesh with the exposure declared in git.
+
+Neither is referenced from this directory. Both need the control plane here to
+be up, which their Flux `Kustomization`s express as `dependsOn: netbird`.
+
+The old `apps/vpn-egress/` gluetun+netbird egress pair is gone. It never ran —
+placeholder credentials, `replicas: 0` for its whole life — and routing mesh
+traffic through a commercial VPN is a separate feature from cluster access.
+
